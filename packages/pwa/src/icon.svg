@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Codex Bridge">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3f3f41" />
+      <stop offset="100%" stop-color="#242426" />
+    </linearGradient>
+    <linearGradient id="fg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f0f0f0" />
+      <stop offset="100%" stop-color="#c8c8c8" />
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#bg)" />
+  <rect x="22" y="22" width="212" height="212" rx="44" fill="none" stroke="#666" stroke-width="4" />
+
+  <path
+    d="M62 93c0-17 14-31 31-31h70c17 0 31 14 31 31v70c0 17-14 31-31 31H93c-17 0-31-14-31-31z"
+    fill="none"
+    stroke="url(#fg)"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <path d="M94 128h68M128 94v68" stroke="url(#fg)" stroke-width="14" stroke-linecap="round" />
+
+  <circle cx="196" cy="196" r="13" fill="#38d988" />
+  <circle cx="196" cy="196" r="21" fill="none" stroke="#38d988" stroke-opacity="0.36" stroke-width="7" />
+</svg>

@@ -1,3 +1,10 @@
 .DS_Store
 **/.DS_Store
 vcs-codex-bridge.prd
+**/node_modules/
+**/out/
+**/dist/
+.local/
+.vscode/
+access_probe.txt
+packages/hub/config/hub.config.json

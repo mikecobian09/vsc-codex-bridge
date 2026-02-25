@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1f1f1f" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Codex Bridge" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
+    <title>VSC Codex Bridge</title>
+    <link rel="stylesheet" href="./styles.css?v=20260225-24" />
+  </head>
+  <body>
+    <div class="ambient-glow" aria-hidden="true"></div>
+
+    <div class="app-root">
+      <header id="topbar" class="topbar is-collapsed">
+        <button id="menu-toggle" class="icon-button" type="button" aria-label="Open menu">
+          <span class="hamburger" aria-hidden="true"></span>
+        </button>
+
+        <div class="topbar__titles">
+          <p class="topbar__eyebrow">CODEX BRIDGE</p>
+          <h1 id="thread-title">Select a thread</h1>
+          <p id="thread-meta">Open menu, connect hub, then pick workspace and thread.</p>
+        </div>
+
+        <div class="topbar__actions">
+          <div class="topbar__pills">
+            <span id="connection-pill" class="pill" data-tone="idle">Disconnected</span>
+            <span id="stream-pill" class="pill" data-tone="idle">Stream idle</span>
+            <span id="thinking-pill" class="pill" data-tone="idle">Idle</span>
+          </div>
+
+          <button
+            id="topbar-toggle"
+            class="icon-button icon-button--header"
+            type="button"
+            aria-label="Expand header"
+            aria-expanded="false"
+          >
+            <span class="topbar-chevron" aria-hidden="true"></span>
+          </button>
+        </div>
+      </header>
+
+      <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+      <aside id="drawer" class="drawer" aria-hidden="true">
+        <header class="drawer__header">
+          <div>
+            <p class="drawer__eyebrow">Navigation</p>
+            <h2>Workspaces</h2>
+          </div>
+          <button id="drawer-close" class="icon-button" type="button" aria-label="Close menu">x</button>
+        </header>
+
+        <section class="panel-card">
+          <h3>Connection</h3>
+
+          <p class="status" data-tone="info">Hub origin: current app URL</p>
+
+          <label class="field">
+            <span>Bearer Token</span>
+            <input id="hub-token" type="password" placeholder="optional" />
+          </label>
+
+          <label class="field field--compact">
+            <span>Model</span>
+            <input id="model-id" type="text" placeholder="default" />
+          </label>
+
+          <label class="field field--compact">
+            <span>Access mode</span>
+            <select id="access-mode">
+              <option value="full-access">full-access</option>
+              <option value="plan-only">plan-only</option>
+            </select>
+          </label>
+
+          <div class="row row--buttons">
+            <button id="save-config" type="button">Save</button>
+            <button id="load-bridges" type="button">Connect</button>
+          </div>
+
+          <p id="status" class="status" data-tone="info">Ready.</p>
+        </section>
+
+        <section class="panel-card panel-card--tree">
+          <h3>Workspace tree</h3>
+          <ul id="workspace-tree" class="tree"></ul>
+        </section>
+
+        <details class="panel-card stream-panel">
+          <summary>Live stream events</summary>
+          <pre id="events" class="events"></pre>
+        </details>
+      </aside>
+
+      <main class="chat-shell">
+        <section id="connection-banner" class="connection-banner" hidden>
+          <span id="connection-banner-text" class="connection-banner__text"></span>
+          <button id="connection-banner-retry" class="connection-banner__retry ghost" type="button">
+            Retry
+          </button>
+        </section>
+
+        <section id="messages" class="messages" aria-live="polite"></section>
+        <button id="jump-bottom" class="jump-bottom" type="button" aria-label="Jump to latest message">
+          ↓
+        </button>
+
+        <section id="thinking-indicator" class="thinking-indicator" hidden>
+          <span>Codex is thinking</span>
+          <span class="typing-dots" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <button id="thinking-jump-thread" class="thinking-jump" type="button" hidden>
+            Open active thread
+          </button>
+        </section>
+
+        <section id="approvals-strip" class="approvals-strip"></section>
+
+        <footer class="composer">
+          <button id="interrupt-turn" class="ghost composer__interrupt" type="button">Stop</button>
+
+          <div class="composer__input-wrap">
+            <textarea
+              id="prompt"
+              rows="2"
+              placeholder="Type a message..."
+            ></textarea>
+
+            <div class="composer__inside-actions">
+              <button id="mic-toggle" class="icon-button icon-button--mic" type="button" aria-label="Start voice dictation">
+                <span class="mic-icon" aria-hidden="true"></span>
+              </button>
+
+              <button id="primary-action" class="primary-action" type="button" aria-label="Send message">
+                <span class="send-icon" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+
+          <p id="dictation-hint" class="dictation-hint"></p>
+        </footer>
+      </main>
+    </div>
+
+    <script src="./app.js?v=20260225-24" type="module"></script>
+  </body>
+</html>

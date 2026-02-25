@@ -152,8 +152,10 @@ Config anti-patterns to avoid:
 - Hub-to-bridge communication remains local-only.
 
 ### CORS/origin handling
-- Keep origin allowlist explicit once browser deployment patterns stabilize.
-- Reject unknown origins in hardened mode.
+- Hub enforces explicit origin checks on API and WS entrypoints.
+- Same-origin requests are allowed automatically.
+- Cross-origin requests are denied unless origin is present in `corsAllowedOrigins` (or env `VSC_CODEX_HUB_CORS_ALLOWED_ORIGINS`).
+- Unknown origins are rejected with `ORIGIN_NOT_ALLOWED`.
 
 ---
 
@@ -164,6 +166,7 @@ Do log:
 - operational state changes;
 - request IDs and route metadata;
 - policy decisions (approved/denied path) without secret values.
+- auth denial audit entries (`reason`, method, route, remote host, origin) with safe redaction.
 
 Do not log:
 - raw auth tokens;
@@ -311,4 +314,3 @@ Any change affecting authentication, authorization, exposure, or redaction must:
 - include test updates,
 - include migration notes in PR description,
 - be treated as high-review-priority changes.
-

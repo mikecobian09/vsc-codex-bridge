@@ -1,0 +1,15 @@
+{
+  "name": "@vsc-codex-bridge/electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "macOS menubar controller for VSC Codex Bridge Hub",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron .",
+    "lint:syntax": "node --check main.js && node --check preload.js && node --check control-center.js"
+  },
+  "devDependencies": {
+    "electron": "^34.2.0"
+  }
+}

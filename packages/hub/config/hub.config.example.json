@@ -1,0 +1,12 @@
+{
+  "bindHost": "127.0.0.1",
+  "port": 7777,
+  "authToken": "",
+  "bridgeTtlMs": 15000,
+  "heartbeatPruneIntervalMs": 5000,
+  "mutatingRateLimitWindowMs": 10000,
+  "mutatingRateLimitMax": 80,
+  "corsAllowedOrigins": [],
+  "publicDir": "packages/pwa/dist",
+  "verboseLogs": false
+}

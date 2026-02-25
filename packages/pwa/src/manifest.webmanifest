@@ -1,0 +1,19 @@
+{
+  "name": "VSC Codex Bridge",
+  "short_name": "Codex Bridge",
+  "description": "Mobile PWA companion for VSC Codex Bridge workspaces and threads.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1f1f1f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

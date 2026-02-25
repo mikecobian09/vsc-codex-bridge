@@ -1,0 +1,28 @@
+{
+  "name": "vsc-codex-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm --prefix packages/shared run compile && npm --prefix packages/bridge-vscode run compile && npm --prefix packages/hub run compile && npm --prefix packages/pwa run build",
+    "build:shared": "npm --prefix packages/shared run compile",
+    "build:bridge": "npm --prefix packages/bridge-vscode run compile",
+    "build:hub": "npm --prefix packages/hub run compile",
+    "build:pwa": "npm --prefix packages/pwa run build",
+    "test:bridge": "npm --prefix packages/bridge-vscode run test",
+    "test:hub": "npm --prefix packages/hub run test",
+    "test:e2e:pwa": "npm --prefix packages/hub run test:e2e:pwa",
+    "dev:hub": "npm --prefix packages/hub run dev",
+    "dev:pwa": "npm --prefix packages/pwa run dev",
+    "dev:electron": "npm --prefix packages/electron run dev",
+    "start:electron": "npm --prefix packages/electron run start",
+    "build:bridge:vsix": "./scripts/package-bridge-extension.sh",
+    "install:bridge:vsix": "./scripts/package-bridge-extension.sh --install",
+    "install:bridge:vsix:restart": "./scripts/package-bridge-extension.sh --install --restart",
+    "build:electron:macos-installer": "./scripts/build-macos-installer.sh",
+    "run:electron": "./scripts/run-electron-menubar.sh",
+    "run:electron:vscode": "./scripts/run-electron-menubar.sh --use-vscode-electron"
+  }
+}

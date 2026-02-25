@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VSC Codex Bridge Hub</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #101011;
+        --bg-soft: #151517;
+        --panel: #1a1a1d;
+        --panel-strong: #141417;
+        --line: #2a2a2e;
+        --line-soft: #34343a;
+        --text: #f3f3f4;
+        --muted: #9c9ca5;
+        --accent: #d6d6dc;
+        --ok: #48d597;
+        --warn: #d8b45f;
+        --danger: #d08383;
+        --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        height: 100%;
+      }
+
+      body {
+        font-family: "IBM Plex Sans", "Space Grotesk", "Avenir Next", sans-serif;
+        color: var(--text);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        background:
+          radial-gradient(circle at 8% 7%, rgba(255, 255, 255, 0.03) 0, transparent 35%),
+          radial-gradient(circle at 90% 12%, rgba(255, 255, 255, 0.02) 0, transparent 42%),
+          linear-gradient(175deg, var(--bg) 0%, #0b0b0d 100%);
+        overflow: hidden;
+      }
+
+      .ambient-glow {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 72% 85%, rgba(255, 255, 255, 0.05) 0, transparent 35%),
+          radial-gradient(circle at 15% 77%, rgba(255, 255, 255, 0.03) 0, transparent 30%);
+      }
+
+      .app-root {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 14px;
+        border: 1px solid rgba(60, 60, 66, 0.82);
+        border-radius: 16px;
+        padding: 10px 12px;
+        background: linear-gradient(180deg, rgba(26, 26, 28, 0.95), rgba(18, 18, 20, 0.95));
+        backdrop-filter: blur(16px) saturate(1.08);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.36);
+      }
+
+      .topbar__eyebrow {
+        margin: 0;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #d0d0d0;
+      }
+
+      .topbar__title {
+        margin: 3px 0 2px;
+        font-size: 18px;
+        line-height: 1.1;
+      }
+
+      .topbar__meta {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .topbar__right {
+        display: grid;
+        justify-items: end;
+        align-content: center;
+        gap: 8px;
+      }
+
+      .topbar__pills {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .pill {
+        border: 1px solid var(--line-soft);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 11px;
+        color: #ececf1;
+        background: rgba(33, 33, 37, 0.9);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #666672;
+      }
+
+      .dot.ok {
+        background: var(--ok);
+      }
+
+      .dot.warn {
+        background: var(--warn);
+      }
+
+      .dot.bad {
+        background: var(--danger);
+      }
+
+      .topbar__actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .layout {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+        gap: 10px;
+      }
+
+      .panel-card {
+        border: 1px solid rgba(90, 90, 90, 0.64);
+        border-radius: 14px;
+        background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+        min-height: 0;
+        display: grid;
+        gap: 10px;
+        align-content: start;
+        padding: 12px;
+        overflow: hidden;
+      }
+
+      .panel-card--diag {
+        grid-template-rows: auto auto auto auto auto 1fr;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+      }
+
+      .panel-subtitle {
+        margin: -4px 0 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .settings-form {
+        display: grid;
+        gap: 10px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      input,
+      button {
+        font: inherit;
+      }
+
+      input[type="text"],
+      input[type="password"],
+      input[type="number"] {
+        width: 100%;
+        border: 1px solid var(--line-soft);
+        border-radius: 10px;
+        background: #1f1f1f;
+        color: var(--text);
+        padding: 9px 10px;
+      }
+
+      input:focus {
+        outline: 1px solid rgba(170, 170, 170, 0.65);
+        border-color: rgba(170, 170, 170, 0.65);
+      }
+
+      .checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #e3e3e8;
+        font-size: 12px;
+      }
+
+      .checkbox input {
+        margin: 0;
+      }
+
+      .button-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      button {
+        border: 1px solid #666666;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #5a5a5a, #4a4a4a);
+        color: #f3f3f3;
+        padding: 8px 10px;
+        cursor: pointer;
+        min-height: 34px;
+      }
+
+      button:hover {
+        filter: brightness(1.08);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      button.ghost {
+        border-color: #5c5c5c;
+        background: linear-gradient(180deg, #3a3a3a, #2f2f2f);
+      }
+
+      button.danger {
+        border-color: #6d4b4b;
+        background: linear-gradient(180deg, #5d3e3e, #4d3232);
+      }
+
+      .status-line {
+        margin: 0;
+        min-height: 18px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .mobile-connect {
+        border: 1px solid rgba(85, 85, 92, 0.72);
+        border-radius: 12px;
+        background: rgba(23, 23, 26, 0.88);
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .mobile-connect__title {
+        margin: 0;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #e5e5ec;
+      }
+
+      .mobile-connect__hint {
+        margin: 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .mobile-connect__token {
+        margin: 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .button-grid--compact {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .mobile-url-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 4px;
+      }
+
+      .mobile-url-list li {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .metric {
+        border: 1px solid rgba(84, 84, 92, 0.7);
+        border-radius: 10px;
+        background: rgba(32, 32, 36, 0.9);
+        padding: 8px;
+      }
+
+      .metric__label {
+        margin: 0;
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .metric__value {
+        margin: 4px 0 0;
+        font-size: 13px;
+        font-weight: 620;
+      }
+
+      .diag-block {
+        display: grid;
+        gap: 6px;
+        min-height: 0;
+      }
+
+      .diag-label {
+        margin: 0;
+        font-size: 12px;
+        color: #d2d2d9;
+      }
+
+      .workspace-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 6px;
+      }
+
+      .workspace-list li {
+        border: 1px solid rgba(84, 84, 92, 0.66);
+        border-radius: 9px;
+        background: rgba(33, 33, 37, 0.84);
+        padding: 7px 8px;
+        font-size: 12px;
+        color: #e7e7ee;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      pre {
+        margin: 0;
+        border: 1px solid rgba(84, 84, 92, 0.74);
+        border-radius: 10px;
+        background: #19191c;
+        color: #e0e0e6;
+        padding: 9px;
+        font-size: 11px;
+        line-height: 1.4;
+        font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+        overflow: auto;
+        max-height: 220px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .footer-bar {
+        border: 1px solid rgba(70, 70, 78, 0.76);
+        border-radius: 12px;
+        background: rgba(18, 18, 20, 0.94);
+        padding: 8px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .footer-path {
+        font-size: 11px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 1080px) {
+        .topbar {
+          grid-template-columns: 1fr;
+        }
+
+        .topbar__right {
+          justify-items: start;
+        }
+
+        .topbar__pills,
+        .topbar__actions {
+          justify-content: flex-start;
+        }
+
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .app-root {
+          padding: 10px;
+          gap: 8px;
+        }
+
+        .button-grid,
+        .metric-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="ambient-glow" aria-hidden="true"></div>
+
+    <div class="app-root">
+      <header class="topbar">
+        <div>
+          <p class="topbar__eyebrow">CODEX BRIDGE</p>
+          <h1 class="topbar__title">Hub Control Center</h1>
+          <p class="topbar__meta">Manage runtime, connected workspaces, and diagnostics with the same app language as the PWA.</p>
+        </div>
+
+        <div class="topbar__right">
+          <div class="topbar__pills">
+            <span class="pill"><span class="dot" id="hub-dot"></span><span id="hub-status">Unknown</span></span>
+            <span class="pill"><span id="workspace-count">0</span><span>workspaces</span></span>
+          </div>
+          <div class="topbar__actions">
+            <button id="refresh-btn" class="ghost" type="button">Refresh</button>
+            <button id="open-pwa-btn" type="button">Open PWA</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel-card">
+          <h2 class="panel-title">Hub Settings</h2>
+          <p class="panel-subtitle">Runtime and launch behavior.</p>
+
+          <form class="settings-form" id="settings-form">
+            <div class="field">
+              <label for="bind-host">Hub bind host</label>
+              <input id="bind-host" type="text" />
+            </div>
+
+            <div class="field">
+              <label for="port">Hub port</label>
+              <input id="port" type="number" min="1" max="65535" />
+            </div>
+
+            <div class="field">
+              <label for="auth-token">Auth token</label>
+              <input id="auth-token" type="password" autocomplete="off" />
+            </div>
+
+            <section class="mobile-connect">
+              <p class="mobile-connect__title">Mobile quick connect</p>
+              <p class="mobile-connect__hint">
+                Use this URL on your phone. It already includes the token and the PWA will save it automatically.
+              </p>
+
+              <div class="field field--compact">
+                <label for="mobile-url">Recommended mobile URL</label>
+                <input id="mobile-url" type="text" readonly />
+              </div>
+
+              <div class="button-grid button-grid--compact">
+                <button id="copy-mobile-url-btn" class="ghost" type="button">Copy URL</button>
+                <button id="open-mobile-url-btn" class="ghost" type="button">Open URL</button>
+                <button id="copy-token-btn" class="ghost" type="button">Copy token</button>
+                <button id="generate-token-btn" class="ghost" type="button">Generate token</button>
+              </div>
+
+              <p class="mobile-connect__token">Token preview: <span id="mobile-token-mask">not configured</span></p>
+              <ul id="mobile-url-list" class="mobile-url-list"></ul>
+            </section>
+
+            <div class="field">
+              <label for="cors-origins">CORS allowed origins (comma separated)</label>
+              <input id="cors-origins" type="text" />
+            </div>
+
+            <label class="checkbox">
+              <input id="verbose-logs" type="checkbox" />
+              <span>Verbose logs</span>
+            </label>
+
+            <label class="checkbox">
+              <input id="launch-at-login" type="checkbox" />
+              <span>Launch app at login</span>
+            </label>
+
+            <label class="checkbox">
+              <input id="auto-start-hub-on-launch" type="checkbox" />
+              <span>Auto-start hub when app launches</span>
+            </label>
+          </form>
+
+          <div class="button-grid">
+            <button id="save-btn" type="button">Save</button>
+            <button id="save-restart-btn" class="ghost" type="button">Save + Restart</button>
+            <button id="start-btn" type="button">Start Hub</button>
+            <button id="stop-btn" class="danger" type="button">Stop Hub</button>
+            <button id="restart-btn" type="button">Restart Hub</button>
+          </div>
+
+          <p class="status-line" id="settings-status">Ready.</p>
+        </section>
+
+        <section class="panel-card panel-card--diag">
+          <h2 class="panel-title">Diagnostics</h2>
+          <p class="panel-subtitle">Live status, health snapshot, and recent logs.</p>
+
+          <div class="metric-grid">
+            <div class="metric">
+              <p class="metric__label">Hub status</p>
+              <p class="metric__value" id="diag-hub-status">unknown</p>
+            </div>
+            <div class="metric">
+              <p class="metric__label">Reachable</p>
+              <p class="metric__value" id="diag-reachable">-</p>
+            </div>
+            <div class="metric">
+              <p class="metric__label">Managed process</p>
+              <p class="metric__value" id="diag-managed">-</p>
+            </div>
+          </div>
+
+          <div class="diag-block">
+            <p class="diag-label">Connected workspaces</p>
+            <ul class="workspace-list" id="workspace-list"></ul>
+          </div>
+
+          <div class="diag-block">
+            <p class="diag-label">Last error</p>
+            <pre id="last-error">none</pre>
+          </div>
+
+          <div class="diag-block">
+            <p class="diag-label">Hub health snapshot</p>
+            <pre id="health-json">{}</pre>
+          </div>
+
+          <div class="diag-block">
+            <p class="diag-label">Menubar log tail</p>
+            <pre id="log-tail"></pre>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer-bar">
+        <span class="footer-path" id="config-path"></span>
+        <button id="reveal-log-btn" class="ghost" type="button">Reveal Log</button>
+      </footer>
+    </div>
+
+    <script src="./control-center.js"></script>
+  </body>
+</html>

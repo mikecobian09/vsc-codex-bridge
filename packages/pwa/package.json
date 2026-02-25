@@ -1,0 +1,10 @@
+{
+  "name": "@vsc-codex-bridge/pwa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal mobile-first web client for VSC Codex Bridge",
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp -R src/* dist/",
+    "dev": "npm run build && echo 'PWA static files built in packages/pwa/dist'"
+  }
+}

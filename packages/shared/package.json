@@ -1,0 +1,16 @@
+{
+  "name": "@vsc-codex-bridge/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared contracts and runtime validators for VSC Codex Bridge packages",
+  "main": "out/index.js",
+  "types": "out/index.d.ts",
+  "scripts": {
+    "compile": "node ../hub/node_modules/typescript/bin/tsc -p .",
+    "watch": "node ../hub/node_modules/typescript/bin/tsc -w -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "typescript": "^5.6.3"
+  }
+}

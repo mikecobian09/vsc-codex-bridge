@@ -1,0 +1,185 @@
+{
+  "name": "vsc-codex-bridge",
+  "displayName": "VSC Codex Bridge",
+  "description": "VS Code bridge extension that exposes local workspace endpoints for the Codex Hub.",
+  "version": "0.1.0",
+  "publisher": "mikecobian09",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mikecobian09/vsc-codex-bridge.git"
+  },
+  "homepage": "https://github.com/mikecobian09/vsc-codex-bridge",
+  "bugs": {
+    "url": "https://github.com/mikecobian09/vsc-codex-bridge/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:vscCodexBridge.startBridge",
+    "onCommand:vscCodexBridge.stopBridge",
+    "onCommand:vscCodexBridge.restartBridge",
+    "onCommand:vscCodexBridge.showStatus",
+    "onCommand:vscCodexBridge.healthCheck",
+    "onCommand:vscCodexBridge.autoDetectAppServerAttachUrl"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "vscCodexBridge.startBridge",
+        "title": "VSC Codex Bridge: Start Bridge"
+      },
+      {
+        "command": "vscCodexBridge.stopBridge",
+        "title": "VSC Codex Bridge: Stop Bridge"
+      },
+      {
+        "command": "vscCodexBridge.restartBridge",
+        "title": "VSC Codex Bridge: Restart Bridge"
+      },
+      {
+        "command": "vscCodexBridge.showStatus",
+        "title": "VSC Codex Bridge: Show Status"
+      },
+      {
+        "command": "vscCodexBridge.healthCheck",
+        "title": "VSC Codex Bridge: Health Check"
+      },
+      {
+        "command": "vscCodexBridge.autoDetectAppServerAttachUrl",
+        "title": "VSC Codex Bridge: Auto-detect App-Server Attach URL"
+      }
+    ],
+    "configuration": {
+      "title": "VSC Codex Bridge",
+      "properties": {
+        "vscCodexBridge.hubUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:7777",
+          "description": "Base URL of the Codex Hub used for bridge registration and heartbeat."
+        },
+        "vscCodexBridge.hubRegisterPath": {
+          "type": "string",
+          "default": "/api/v1/internal/bridges/register",
+          "description": "Hub registration path for bridge metadata."
+        },
+        "vscCodexBridge.hubHeartbeatPath": {
+          "type": "string",
+          "default": "/api/v1/internal/bridges/:bridgeId/heartbeat",
+          "description": "Hub heartbeat path. Use :bridgeId placeholder in the path."
+        },
+        "vscCodexBridge.hubToken": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Bearer token for Hub API authentication."
+        },
+        "vscCodexBridge.backendMode": {
+          "type": "string",
+          "enum": [
+            "app-server",
+            "simulated"
+          ],
+          "default": "app-server",
+          "description": "Backend mode used by the bridge. app-server uses real Codex events; simulated uses local mock behavior."
+        },
+        "vscCodexBridge.appServerCommand": {
+          "type": "string",
+          "default": "codex",
+          "description": "Command used to launch the Codex app-server process."
+        },
+        "vscCodexBridge.appServerMode": {
+          "type": "string",
+          "enum": [
+            "spawn",
+            "attach"
+          ],
+          "default": "spawn",
+          "description": "App-server connection mode. spawn launches a local app-server process (recommended). attach attempts to connect to an existing app-server websocket and fails startup if attach cannot be established."
+        },
+        "vscCodexBridge.appServerAttachUrl": {
+          "type": "string",
+          "default": "",
+          "description": "WebSocket URL used when appServerMode=attach (for example ws://127.0.0.1:55545). If empty, bridge attempts best-effort local auto-detection before failing attach startup."
+        },
+        "vscCodexBridge.appServerExtraArgs": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Extra CLI args appended when launching codex app-server."
+        },
+        "vscCodexBridge.appServerHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host interface used when launching app-server with ws://HOST:PORT."
+        },
+        "vscCodexBridge.appServerStartupTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "description": "Timeout in milliseconds to start and initialize app-server."
+        },
+        "vscCodexBridge.appServerExperimentalApi": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable experimental API capabilities during app-server initialize."
+        },
+        "vscCodexBridge.bindHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host interface for the local bridge internal API server."
+        },
+        "vscCodexBridge.bindPort": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Port for bridge internal API server. Use 0 for an ephemeral port."
+        },
+        "vscCodexBridge.heartbeatIntervalMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "description": "Heartbeat interval in milliseconds for hub updates."
+        },
+        "vscCodexBridge.fullAccessAutoApprove": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, full-access mode auto-approves command/file-change approval requests for the active session."
+        },
+        "vscCodexBridge.autoStartBridge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start bridge when VS Code window opens this workspace."
+        },
+        "vscCodexBridge.verboseLogs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable verbose bridge logs in the VS Code output panel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "vscode:prepublish": "npm run compile",
+    "test": "npm run compile && node --test out/test/appServerStore.regression.test.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.90.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.6.3"
+  }
+}
