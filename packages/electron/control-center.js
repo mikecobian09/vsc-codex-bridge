@@ -15,6 +15,7 @@ const elements = {
   hubStatus: document.getElementById("hub-status"),
   workspaceCount: document.getElementById("workspace-count"),
   settingsStatus: document.getElementById("settings-status"),
+  securityBanner: document.getElementById("security-banner"),
 
   bindHost: document.getElementById("bind-host"),
   port: document.getElementById("port"),
@@ -327,6 +328,7 @@ function renderState(state) {
   }
 
   renderMobileConnect(state);
+  updateSecurityBanner();
 }
 
 /**
@@ -344,6 +346,7 @@ function applyConfigToForm(config, force) {
   elements.corsOrigins.value = String(config.corsAllowedOrigins || "");
   elements.verboseLogs.checked = Boolean(config.verboseLogs);
   formDirty = false;
+  updateSecurityBanner();
 }
 
 /**
@@ -358,6 +361,7 @@ function applyAppSettingsToForm(appSettings, force) {
   elements.launchAtLogin.checked = Boolean(appSettings.launchAtLogin);
   elements.autoStartHubOnLaunch.checked = Boolean(appSettings.autoStartHubOnLaunch);
   formDirty = false;
+  updateSecurityBanner();
 }
 
 /**
@@ -389,6 +393,7 @@ function renderDiagnostics(diagnostics) {
   elements.healthJson.textContent = safeJson(health);
   elements.logTail.textContent = recentLog || "[no log entries yet]";
   elements.configPath.textContent = String(state.configPath || "");
+  updateSecurityBanner();
 }
 
 /**
@@ -494,6 +499,66 @@ function stringifyError(value) {
     return value.message;
   }
   return String(value);
+}
+
+function updateSecurityBanner() {
+  if (!elements.securityBanner) {
+    return;
+  }
+
+  const bindHost = String(elements.bindHost?.value || "").trim();
+  const token = String(elements.authToken?.value || "").trim();
+  const isLocalOnly = isLocalBindHost(bindHost);
+  const tone = deriveSecurityTone(isLocalOnly, token);
+  const message = deriveSecurityMessage(isLocalOnly, token);
+
+  elements.securityBanner.dataset.tone = tone;
+  elements.securityBanner.textContent = message;
+}
+
+/**
+ * @param {string} host
+ */
+function isLocalBindHost(host) {
+  const normalized = host.toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+}
+
+/**
+ * @param {boolean} isLocalOnly
+ * @param {string} token
+ */
+function deriveSecurityTone(isLocalOnly, token) {
+  if (!isLocalOnly && token.length === 0) {
+    return "danger";
+  }
+  if (!isLocalOnly && token.length > 0 && token.length < 16) {
+    return "warn";
+  }
+  if (!isLocalOnly) {
+    return "ok";
+  }
+  return "ok";
+}
+
+/**
+ * @param {boolean} isLocalOnly
+ * @param {string} token
+ */
+function deriveSecurityMessage(isLocalOnly, token) {
+  if (!isLocalOnly && token.length === 0) {
+    return "Risky profile: hub is exposed beyond localhost and no auth token is configured.";
+  }
+  if (!isLocalOnly && token.length < 16) {
+    return "Warning: hub is exposed beyond localhost. Use a stronger token (recommended: 16+ chars).";
+  }
+  if (!isLocalOnly) {
+    return "Remote-ready profile: network bind enabled and auth token configured.";
+  }
+  if (token.length > 0) {
+    return "Local-only profile with token enabled.";
+  }
+  return "Local-only profile.";
 }
 
 /**

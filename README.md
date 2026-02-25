@@ -85,7 +85,10 @@ This repository is currently in active build mode:
   - open/copy PWA URL actions,
   - mobile quick-connect snapshot (recommended URL with embedded token, LAN/Tailscale candidates),
   - live connected-workspace listing,
-  - Control Center window for settings + diagnostics.
+  - Control Center window for settings + diagnostics,
+  - VS Code Night-style Control Center refresh (dark neutral palette),
+  - scroll-safe layout so all controls are reachable on smaller windows,
+  - explicit security posture banner (local-only vs remote bind + token strength hints).
 - Packaged menubar mode now bootstraps safer remote defaults automatically:
   - `bindHost: 0.0.0.0` (LAN/Tailscale reachable),
   - generated `authToken` when missing,
@@ -728,11 +731,9 @@ Current supporting docs:
 - `docs/SECURITY.md`: deployment hardening and threat boundaries.
 - `docs/ATTACH_RESEARCH.md`: attach-mode investigation, evidence, and contributor protocol.
 - `docs/RELEASES.md`: release artifact matrix and publish checklist.
+- `docs/TROUBLESHOOTING.md`: setup/runtime issue playbook and recovery steps.
 - `CONTRIBUTING.md`: development workflow and PR quality bar.
 - `AGENTS.md`: fast-start operating guide for AI coding agents.
-
-Planned additional docs:
-- `docs/TROUBLESHOOTING.md`: setup and runtime issue playbooks.
 
 As implementation progresses, this README should be updated with:
 - actual setup commands,
