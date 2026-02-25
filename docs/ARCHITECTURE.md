@@ -205,7 +205,7 @@ Acceptance condition:
 
 ## 8. API and Event Contracts
 
-Canonical contracts are maintained in README/PRD until shared package schemas exist.
+Canonical contracts are maintained in README/docs until shared package schemas exist.
 
 Implementation target:
 - Move all public/internal request and WS schemas into `packages/shared`.
@@ -399,7 +399,6 @@ Recommended ADRs to formalize:
 
 When architecture changes:
 - Update this document and relevant sections in README.
-- Update PRD if product assumptions changed.
+- Update internal product requirements if assumptions changed.
 - Add or update ADR where a foundational decision changed.
 - Record migration impact if API/event contract changed.
-

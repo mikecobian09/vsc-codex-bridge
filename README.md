@@ -35,7 +35,7 @@ Current state: planning and architecture phase.
 ## Project Status
 
 This repository is currently in specification mode:
-- Product requirements are captured in [`vcs-codex-bridge.prd`](./vcs-codex-bridge.prd).
+- Product requirements are maintained in an internal PRD (not committed to this repository).
 - Core architecture, API contracts, and scope decisions are defined.
 - Implementation code is not yet scaffolded in this repository.
 - Detailed architecture reference: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
@@ -163,7 +163,6 @@ codex-hub/
   README.md
   LICENSE
   docs/
-    PRD.md
     SECURITY.md
     TROUBLESHOOTING.md
     ARCHITECTURE.md
@@ -428,7 +427,7 @@ Expected diagnostics capabilities:
 This project is currently pre-implementation; contributions should focus on clarity and correctness.
 
 ### Before opening a PR
-- Read the PRD (`vcs-codex-bridge.prd`).
+- Read this README and the docs in `docs/`.
 - Keep scope aligned with single-user model.
 - Avoid introducing unsupported assumptions as hard commitments.
 
@@ -451,7 +450,6 @@ This project is currently pre-implementation; contributions should focus on clar
 This README is the high-level operational document.
 
 Current supporting docs:
-- `vcs-codex-bridge.prd`: product and technical requirements baseline.
 - `docs/ARCHITECTURE.md`: deeper component diagrams and data paths.
 - `docs/SECURITY.md`: deployment hardening and threat boundaries.
 
