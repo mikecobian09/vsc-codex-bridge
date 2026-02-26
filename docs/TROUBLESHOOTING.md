@@ -1,44 +1,43 @@
 # Troubleshooting
 
-This page covers the most common runtime failures and practical fixes.
+This page covers common runtime failures and practical fixes for the extension-only workflow.
 
 ## 1) PWA shows `0 workspaces`
 
 Checks:
-1. Confirm hub is up:
-   - `http://127.0.0.1:7777/healthz`
-2. Confirm bridge is running in the target VS Code workspace:
-   - Command Palette -> `VSC Codex Bridge: Show Status`
-3. Confirm hub auth token in PWA matches hub config token.
-4. Confirm hub is reachable from your current network path (LAN/Tailscale).
+1. Confirm Hub is up: `http://127.0.0.1:7777/healthz`
+2. Confirm bridge is running in the target workspace:
+   - `VSC Codex Bridge: Show Status`
+3. Confirm PWA token matches `vscCodexBridge.hubToken`.
+4. Confirm Hub address is reachable from your current network path.
 
 Fixes:
-- Restart bridge in the workspace (`VSC Codex Bridge: Restart Bridge`).
-- Restart hub from menubar Control Center (`Restart Hub`).
-- If hub restarted, wait a few seconds: bridge auto re-register should recover workspaces.
+- `VSC Codex Bridge: Restart Hub`
+- `VSC Codex Bridge: Restart Bridge`
+- Wait a few seconds for auto re-register recovery after Hub restart.
 
 ## 2) PWA does not update in real time
 
 Checks:
-1. Observe stream pill in PWA (`Live`, `Reconnecting`, `Idle`).
-2. Open browser devtools console and inspect `[pwa:<build>]` logs.
-3. Hard refresh browser once to ensure latest assets are loaded.
+1. Observe stream state in PWA (`Live`, `Reconnecting`, `Idle`).
+2. Open browser devtools and inspect `[pwa:<build>]` logs.
+3. Hard refresh once to ensure latest assets are loaded.
 
 Notes:
 - PWA combines WebSocket streaming with polling fallback.
 - Temporary network blips can force short reconnect cycles.
 
-## 3) `Codex is thinking...` stuck or missing
+## 3) `Codex is thinking...` appears stuck or missing
 
 Checks:
-1. Verify latest PWA build is served (cache-busting query is versioned).
-2. Verify selected thread actually has an active turn.
-3. Confirm `thread/read` endpoint returns updated status.
+1. Verify latest PWA build is loaded (cache-busting query).
+2. Verify selected thread has an active turn.
+3. Confirm `thread/read` returns fresh status.
 
 Fixes:
-- Hard refresh browser tab.
-- Re-open selected thread from workspace drawer.
-- Restart bridge if active turn state looks stale.
+- Hard refresh browser.
+- Re-open thread from drawer.
+- Restart bridge if active-turn state looks stale.
 
 ## 4) Message from PWA creates another thread or fails with thread errors
 
@@ -47,75 +46,62 @@ Symptoms:
 - New thread appears unexpectedly.
 
 Current behavior:
-- Bridge now force-creates a new thread when stale thread IDs fail with `thread not found`.
+- Bridge force-creates a new thread when stale thread IDs fail with `thread not found`.
 
 Fixes:
-- Re-select target thread in drawer.
+- Re-select target thread.
 - Retry send once.
-- If still failing, restart bridge and hub.
+- Restart bridge and hub if issue persists.
 
 ## 5) Extension cannot launch `codex` (`Could not launch 'codex'`)
 
 Checks:
-1. Ensure OpenAI ChatGPT extension is installed in VS Code.
-2. Confirm bridge setting uses default command or correct path.
+1. Ensure OpenAI ChatGPT extension is installed.
+2. Confirm bridge setting uses default command or a valid custom path.
 
 Notes:
-- Bridge auto-resolves bundled `codex` binary from OpenAI extension when GUI `PATH` is limited.
+- Bridge auto-resolves bundled `codex` binary from OpenAI extension when VS Code GUI `PATH` is limited.
 
 ## 6) Attach mode keeps failing (`ECONNREFUSED`, timeout)
 
-Reality check:
-- Attach mode is currently experimental and not reliable enough for daily usage.
+Reality:
+- Attach mode remains experimental.
 - Recommended mode is `spawn`.
 
 Fix:
-- Set `vscCodexBridge.appServerMode` to `spawn`.
+- Set `vscCodexBridge.appServerMode=spawn`.
 
-Research references:
+Research:
 - `docs/ATTACH_RESEARCH.md`
 - `scripts/collect-attach-diagnostics.sh`
 
-## 7) Hub reachable locally but not through LAN/Tailscale
+## 7) Hub works locally but not over LAN/Tailscale
 
 Checks:
-1. Hub bind host is not localhost-only.
-2. Correct interface IP is used (LAN or Tailscale).
-3. macOS firewall allows inbound port (default `7777`).
-4. Token auth is configured and used.
+1. `vscCodexBridge.managedHubBindHost=0.0.0.0`
+2. Correct LAN/Tailscale IP is used on mobile.
+3. macOS firewall allows inbound port `7777`.
+4. Token is configured and sent from PWA.
 
 Fixes:
-- In Control Center set `bindHost` to `0.0.0.0` (or specific interface), then `Save + Restart`.
-- Use mobile quick-connect URL in Control Center.
+- Run `VSC Codex Bridge: Restart Hub` after host/port/token changes.
+- Open PWA with token query once:
+  - `http://<mac-ip>:7777/?token=<token>`
 
-## 8) Control Center settings cannot be saved in packaged app
-
-Checks:
-1. App has write permissions to:
-   - `~/Library/Application Support/vsc-codex-bridge-hub-menubar/`
-2. Runtime logs in menubar log file for write errors.
-
-Fixes:
-- Restart app once.
-- Ensure app is launched from `/Applications` install, not transient mount path.
-
-## 9) VSIX package command warns about missing repository
+## 8) VSIX package command warns about missing repository
 
 Symptom:
 - `A 'repository' field is missing ...`
-
-Current tooling:
-- Packaging script already uses `--allow-missing-repository`.
 
 Fix:
 - Use root command:
   - `npm run build:bridge:vsix`
 
-## 10) Quick diagnostic bundle (manual)
+## 9) Quick diagnostic bundle (manual)
 
-Collect these before opening an issue:
+Collect before opening an issue:
 1. Extension output logs (`VSC Codex Bridge` output channel).
-2. Hub logs (`/tmp/vsc-codex-hub.log` or menubar log path).
-3. `hub.config.json` (redact token before sharing).
+2. Hub logs (`managed-hub.log` in extension global storage or `/tmp/vsc-codex-hub.log` when using dev hub).
+3. Effective settings (redact token).
 4. Browser console logs from PWA.
 5. Exact steps and timestamps.

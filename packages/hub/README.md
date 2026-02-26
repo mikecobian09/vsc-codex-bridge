@@ -60,6 +60,7 @@ Public routes:
 - `GET /healthz`
 - `GET /api/v1/bridges`
 - `GET /api/v1/bridges/:bridgeId/meta`
+- `GET /api/v1/runtime/security`
 - `GET /api/v1/bridges/:bridgeId/threads`
 - `GET /api/v1/bridges/:bridgeId/threads/:threadId`
 - `POST /api/v1/bridges/:bridgeId/threads/:threadId/message`

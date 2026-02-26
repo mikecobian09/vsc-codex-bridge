@@ -16,13 +16,8 @@
     "test:e2e:pwa": "npm --prefix packages/hub run test:e2e:pwa",
     "dev:hub": "npm --prefix packages/hub run dev",
     "dev:pwa": "npm --prefix packages/pwa run dev",
-    "dev:electron": "npm --prefix packages/electron run dev",
-    "start:electron": "npm --prefix packages/electron run start",
     "build:bridge:vsix": "./scripts/package-bridge-extension.sh",
     "install:bridge:vsix": "./scripts/package-bridge-extension.sh --install",
-    "install:bridge:vsix:restart": "./scripts/package-bridge-extension.sh --install --restart",
-    "build:electron:macos-installer": "./scripts/build-macos-installer.sh",
-    "run:electron": "./scripts/run-electron-menubar.sh",
-    "run:electron:vscode": "./scripts/run-electron-menubar.sh --use-vscode-electron"
+    "install:bridge:vsix:restart": "./scripts/package-bridge-extension.sh --install --restart"
   }
 }

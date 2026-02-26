@@ -1,15 +1,14 @@
 # AGENTS.md
 
-This file is the fast operational guide for AI coding agents working in this repository.
+Fast operational guide for AI coding agents working in this repository.
 
 ## 1) Mission
 
 `VSC Codex Bridge` connects:
 - VS Code Codex workflows,
 - a local bridge extension,
-- a hub service,
-- a mobile-first PWA,
-- and a macOS menubar app (Electron).
+- a Hub service,
+- and a mobile-first PWA.
 
 Primary user value:
 - start/monitor/control Codex turns from phone,
@@ -21,14 +20,14 @@ Current product model:
 - JSON persistence,
 - `plan-only` blocks all execution and requires per-action approval,
 - `full-access` defaults to session auto-approve,
-- polling is acceptable for mobile MVP notifications.
+- polling is acceptable for mobile MVP notifications,
+- extension-only distribution (managed Hub inside extension).
 
 ## 2) Repo Map
 
-- `packages/bridge-vscode`: VS Code extension (bridge + internal API + app-server adapter).
+- `packages/bridge-vscode`: VS Code extension (bridge + managed hub runtime + internal API + app-server adapter).
 - `packages/hub`: HTTP/WS hub, bridge registry, auth, static PWA host.
 - `packages/pwa`: mobile web app.
-- `packages/electron`: macOS menubar controller + Control Center.
 - `packages/shared`: shared contracts/validators.
 - `scripts/`: packaging and runtime helper scripts.
 - `docs/`: architecture, security, release notes, attach research.
@@ -37,9 +36,7 @@ Current product model:
 
 1. Bridge runtime recommendation is `spawn` mode.
 2. `attach` mode exists but is still experimental/unreliable in real plugin sessions.
-3. Packaged Electron runtime bootstraps remote-friendly defaults:
-   - `bindHost=0.0.0.0` when config is missing,
-   - generated `authToken` when missing.
+3. Managed hub default bind for extension mode is `0.0.0.0` (LAN friendly).
 4. PWA supports one-tap mobile onboarding via `?token=` in URL.
 5. Internal PRD file (`vcs-codex-bridge.prd`) is intentionally ignored from git.
 
@@ -72,28 +69,19 @@ Build and locally install VSIX:
 npm run install:bridge:vsix
 ```
 
-Run Electron menubar app (dev):
-```bash
-npm run dev:electron
-```
-
-Build macOS app installers:
-```bash
-npm run build:electron:macos-installer
-```
-
 ## 5) Typical Runtime Topology
 
 `PWA <-> Hub <-> Bridge Extension <-> codex app-server`
 
 - One bridge instance per VS Code workspace window.
-- Hub is single ingress for PWA and Electron.
+- Hub is single ingress for PWA traffic.
 - Bridge exposes local internal HTTP/WS API consumed by hub.
 
 ## 6) Where To Change Things
 
 Bridge runtime / lifecycle / app-server:
 - `packages/bridge-vscode/src/bridgeController.ts`
+- `packages/bridge-vscode/src/managedHubRuntime.ts`
 - `packages/bridge-vscode/src/appServerClient.ts`
 - `packages/bridge-vscode/src/appServerStore.ts`
 - `packages/bridge-vscode/src/hubClient.ts`
@@ -108,11 +96,6 @@ PWA behavior and UX:
 - `packages/pwa/src/app.js`
 - `packages/pwa/src/styles.css`
 - `packages/pwa/src/index.html`
-
-Electron menubar + Control Center:
-- `packages/electron/main.js`
-- `packages/electron/control-center.js`
-- `packages/electron/control-center.html`
 
 ## 7) Debug Playbook
 
@@ -157,7 +140,7 @@ When you change behavior, update at least one of:
 - package README inside touched package,
 - `docs/*` for deep technical/security/release info.
 
-Also keep checklist/changelog in internal PRD locally updated for the operator workflow.
+Also keep checklist/changelog in internal PRD locally updated for operator workflow.
 
 ## 10) Security and Operational Constraints
 
@@ -171,10 +154,10 @@ Also keep checklist/changelog in internal PRD locally updated for the operator w
 When you first enter this repo, do:
 1. `git status --short`
 2. `npm run build`
-3. read `README.md` sections: Project Status, Beginner Install Guide, App-Server Mode Recommendation
+3. read `README.md` sections: Install and Use, Required Settings, Runtime Topology
 4. read `docs/ARCHITECTURE.md` and `docs/SECURITY.md`
 
 Then confirm:
 - current runtime mode assumption (`spawn`),
-- current target surface (bridge/hub/pwa/electron),
+- current target surface (bridge/hub/pwa),
 - expected verification command(s).

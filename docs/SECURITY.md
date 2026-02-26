@@ -1,7 +1,7 @@
 # Security
 
 Version: 0.1  
-Last updated: 2026-02-25  
+Last updated: 2026-02-26  
 Status: Living security baseline
 
 This document defines the security posture for VSC Codex Bridge.
@@ -117,6 +117,10 @@ Config anti-patterns to avoid:
 - Reusing a weak token value.
 - Long-lived auto-approval with no visible indicator.
 
+Runtime posture surfaces:
+- Extension diagnostics and bridge health output expose local/remote posture warnings from effective bind + token state.
+- PWA connection panel consumes `/api/v1/runtime/security` to surface mobile-visible safety warnings.
+
 ---
 
 ## 7. Secret and Token Management
@@ -127,7 +131,8 @@ Config anti-patterns to avoid:
 - Store:
   - local config, avoid plain token in logs.
 - Use:
-  - send in Authorization header, never query string.
+  - send in Authorization header for HTTP API requests.
+  - query-string token is allowed only for constrained flows (browser WS handshake fallback and one-time onboarding links), and should be removed from URL state immediately after bootstrap.
 - Rotate:
   - regenerate token in settings UI/CLI.
 - Revoke:

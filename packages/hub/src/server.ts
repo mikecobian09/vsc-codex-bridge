@@ -282,6 +282,11 @@ export class HubServer {
       return;
     }
 
+    if (method === "GET" && pathname === "/api/v1/runtime/security") {
+      this.writeJson(response, 200, this.buildSecurityPosture());
+      return;
+    }
+
     const bridgeMetaMatch = pathname.match(/^\/api\/v1\/bridges\/([^/]+)\/meta$/);
     if (method === "GET" && bridgeMetaMatch) {
       const bridgeId = decodeURIComponent(bridgeMetaMatch[1]);
@@ -771,6 +776,40 @@ export class HubServer {
     this.requestSeq += 1;
     return `hub-${this.requestSeq}`;
   }
+
+  private buildSecurityPosture(): {
+    posture: "ok" | "warn" | "danger";
+    bindHost: string;
+    port: number;
+    authEnabled: boolean;
+    tokenLength: number;
+    warnings: string[];
+  } {
+    const bindHost = this.config.bindHost;
+    const token = this.config.authToken ?? "";
+    const tokenLength = token.length;
+    const authEnabled = tokenLength > 0;
+    const localBind = isLocalBindHost(bindHost);
+    const warnings: string[] = [];
+    let posture: "ok" | "warn" | "danger" = "ok";
+
+    if (!localBind && !authEnabled) {
+      posture = "danger";
+      warnings.push("Hub is exposed beyond localhost without auth token.");
+    } else if (!localBind && tokenLength < 16) {
+      posture = "warn";
+      warnings.push("Hub is exposed beyond localhost with a weak token. Use 16+ chars.");
+    }
+
+    return {
+      posture,
+      bindHost,
+      port: this.config.port,
+      authEnabled,
+      tokenLength,
+      warnings,
+    };
+  }
 }
 
 function normalizeRemoteHost(address: string | undefined): string {
@@ -787,6 +826,11 @@ function normalizeRemoteHost(address: string | undefined): string {
 
 function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
+}
+
+function isLocalBindHost(host: string): boolean {
+  const normalized = String(host || "").trim().toLowerCase();
+  return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
 }
 
 function normalizeOrigin(origin: string): string | null {

@@ -31,7 +31,14 @@ export function readConfig(): ExtensionConfig {
   const backendMode = normalizeBackendMode(config.get<string>("backendMode"));
   const fullAccessAutoApprove = Boolean(config.get<boolean>("fullAccessAutoApprove", true));
   const autoStartBridge = Boolean(config.get<boolean>("autoStartBridge", true));
+  const managedHubEnabled = Boolean(config.get<boolean>("manageHubInExtension", true));
+  const managedHubBindHost = normalizeString(config.get<string>("managedHubBindHost"), "0.0.0.0");
+  const managedHubPort = normalizePort(config.get<number>("managedHubPort"), 7777);
   const verboseLogs = Boolean(config.get<boolean>("verboseLogs", false));
+
+  const resolvedHubUrl = managedHubEnabled
+    ? `http://${normalizeHubClientHost(managedHubBindHost)}:${managedHubPort}`
+    : hubUrl;
 
   return {
     internal: {
@@ -39,7 +46,7 @@ export function readConfig(): ExtensionConfig {
       bindPort,
     },
     hub: {
-      hubUrl,
+      hubUrl: resolvedHubUrl,
       hubRegisterPath,
       hubHeartbeatPath,
       hubToken,
@@ -58,6 +65,11 @@ export function readConfig(): ExtensionConfig {
       backendMode,
       fullAccessAutoApprove,
       autoStartBridge,
+    },
+    managedHub: {
+      enabled: managedHubEnabled,
+      bindHost: managedHubBindHost,
+      port: managedHubPort,
     },
     verboseLogs,
   };
@@ -144,6 +156,14 @@ function normalizeWebSocketUrl(value: string | undefined): string | null {
   }
 
   return trimmed;
+}
+
+function normalizeHubClientHost(host: string): string {
+  const normalized = host.trim().toLowerCase();
+  if (normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]") {
+    return "127.0.0.1";
+  }
+  return host;
 }
 
 function resolveAppServerCommand(configuredCommand: string): string {

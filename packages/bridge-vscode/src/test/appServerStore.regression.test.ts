@@ -285,6 +285,104 @@ test("notification mapper marks turn completed and clears active turn pointer on
   assert.equal(getActiveTurnMap(store).has(turn.threadId), false);
 });
 
+test("startTurn with draft thread id creates a brand new conversation thread", async () => {
+  mockAppServer.request = async (method: string, params?: unknown): Promise<any> => {
+    mockAppServer.requestCalls.push({ method, params });
+    if (method === "thread/start") {
+      return {
+        thread: { id: "thread_new_from_draft" },
+        turn: { id: "turn_new_from_draft" },
+      };
+    }
+
+    throw new Error(`Unexpected RPC call: ${method}`);
+  };
+
+  const result = await store.startTurn("__draft_new_thread__bridge_test", {
+    text: "new conversation from draft",
+    accessMode: "full-access",
+  });
+
+  assert.equal(result.threadId, "thread_new_from_draft");
+  assert.equal(result.turnId, "turn_new_from_draft");
+  assert.equal(getActiveTurnMap(store).get("thread_new_from_draft"), "turn_new_from_draft");
+  assert.equal(getTurnRecordMap(store).get("turn_new_from_draft")?.threadId, "thread_new_from_draft");
+  assert.equal(mockAppServer.requestCalls[0]?.method, "thread/start");
+});
+
+test("draft thread fallback uses turn/start with explicit threadId when thread/start is unavailable", async () => {
+  let fallbackThreadId = "";
+
+  mockAppServer.request = async (method: string, params?: unknown): Promise<any> => {
+    mockAppServer.requestCalls.push({ method, params });
+
+    if (method === "thread/start") {
+      throw new Error("Method not found: thread/start");
+    }
+
+    if (method === "turn/start") {
+      const payload = params as { threadId?: string };
+      fallbackThreadId = String(payload.threadId || "");
+      assert.ok(fallbackThreadId.length > 0);
+      return {
+        turn: { id: "turn_new_from_turn_start_fallback" },
+      };
+    }
+
+    if (method === "thread/list") {
+      return { data: [] };
+    }
+
+    throw new Error(`Unexpected RPC call: ${method}`);
+  };
+
+  const result = await store.startTurn("__draft_new_thread__bridge_test", {
+    text: "new conversation fallback",
+    accessMode: "full-access",
+  });
+
+  assert.equal(result.turnId, "turn_new_from_turn_start_fallback");
+  assert.equal(result.threadId, fallbackThreadId);
+  assert.equal(getTurnRecordMap(store).get("turn_new_from_turn_start_fallback")?.threadId, fallbackThreadId);
+  assert.equal(mockAppServer.requestCalls[0]?.method, "thread/start");
+  assert.equal(mockAppServer.requestCalls[1]?.method, "turn/start");
+  assert.equal(mockAppServer.requestCalls.filter((call) => call.method === "thread/list").length, 0);
+});
+
+test("draft thread fallback retries with explicit turn/start when thread/start reports busy", async () => {
+  let fallbackThreadId = "";
+
+  mockAppServer.request = async (method: string, params?: unknown): Promise<any> => {
+    mockAppServer.requestCalls.push({ method, params });
+
+    if (method === "thread/start") {
+      throw new Error("Thread is busy with an active turn.");
+    }
+
+    if (method === "turn/start") {
+      const payload = params as { threadId?: string };
+      fallbackThreadId = String(payload.threadId || "");
+      assert.ok(fallbackThreadId.length > 0);
+      return {
+        turn: { id: "turn_new_from_busy_fallback" },
+      };
+    }
+
+    throw new Error(`Unexpected RPC call: ${method}`);
+  };
+
+  const result = await store.startTurn("__draft_new_thread__bridge_test", {
+    text: "new conversation busy fallback",
+    accessMode: "full-access",
+  });
+
+  assert.equal(result.turnId, "turn_new_from_busy_fallback");
+  assert.equal(result.threadId, fallbackThreadId);
+  assert.equal(getTurnRecordMap(store).get("turn_new_from_busy_fallback")?.threadId, fallbackThreadId);
+  assert.equal(mockAppServer.requestCalls[0]?.method, "thread/start");
+  assert.equal(mockAppServer.requestCalls[1]?.method, "turn/start");
+});
+
 function createStore(runtimeConfig: BridgeRuntimeConfig): AppServerStore {
   const logger = new Logger(createSilentLoggerChannel(), false);
   return new AppServerStore(

@@ -53,6 +53,8 @@ interface TurnContext {
   turnId: string;
 }
 
+const NEW_THREAD_DRAFT_PREFIX = "__draft_new_thread__";
+
 export class AppServerStore implements BridgeStoreLike {
   private readonly emitter = new EventEmitter();
   private readonly appServer: AppServerClient;
@@ -155,27 +157,34 @@ export class AppServerStore implements BridgeStoreLike {
     }
 
     const accessMode: AccessMode = request.accessMode ?? "full-access";
-    const actualThreadId = threadId;
+    let actualThreadId = threadId;
+    let turnId = "";
 
-    // Always target the exact thread selected by the client.
-    // If it is temporarily unloaded, readThread() handles a resume/read retry.
-    await this.readThread(actualThreadId, false);
-    await this.prepareThreadAccessMode(actualThreadId, accessMode);
+    if (isNewThreadDraftId(threadId)) {
+      const created = await this.startTurnInNewThread(text, request.modelId, accessMode);
+      actualThreadId = created.threadId;
+      turnId = created.turnId;
+    } else {
+      // Always target the exact thread selected by the client.
+      // If it is temporarily unloaded, readThread() handles a resume/read retry.
+      await this.readThread(actualThreadId, false);
+      await this.prepareThreadAccessMode(actualThreadId, accessMode);
 
-    let turnStartResponse: { turn: { id: string } };
-    try {
-      turnStartResponse = await this.requestTurnStart(actualThreadId, text, request.modelId, accessMode);
-    } catch (error) {
-      if (isThreadNotLoadedError(error) || isThreadNotFoundError(error)) {
-        // Try one explicit resume+retry before failing. Do not silently switch thread IDs.
-        await this.resumeThread(actualThreadId, accessMode);
+      let turnStartResponse: { turn: { id: string } };
+      try {
         turnStartResponse = await this.requestTurnStart(actualThreadId, text, request.modelId, accessMode);
-      } else {
-        throw this.mapBackendError(error);
+      } catch (error) {
+        if (isThreadNotLoadedError(error) || isThreadNotFoundError(error)) {
+          // Try one explicit resume+retry before failing. Do not silently switch thread IDs.
+          await this.resumeThread(actualThreadId, accessMode);
+          turnStartResponse = await this.requestTurnStart(actualThreadId, text, request.modelId, accessMode);
+        } else {
+          throw this.mapBackendError(error);
+        }
       }
-    }
 
-    const turnId = String(turnStartResponse.turn.id);
+      turnId = String(turnStartResponse.turn.id);
+    }
 
     const existing = this.turnRecords.get(turnId);
     if (!existing) {
@@ -201,6 +210,33 @@ export class AppServerStore implements BridgeStoreLike {
     return {
       turnId,
       threadId: actualThreadId,
+    };
+  }
+
+  private async startTurnInNewThread(
+    text: string,
+    modelId: string | null | undefined,
+    accessMode: AccessMode,
+  ): Promise<{ threadId: string; turnId: string }> {
+    const started = await this.requestTurnStartForNewThread(text, modelId, accessMode);
+    const turnId = this.extractTurnIdFromStartResponse(started.response);
+    if (!turnId) {
+      throw new BridgeStoreError("INVALID_STATE", "New conversation start did not return a turn id.");
+    }
+
+    const responseThreadId = this.extractThreadIdFromStartResponse(started.response);
+    const resolvedThreadId = responseThreadId ?? started.requestedThreadId ?? (await this.resolveThreadIdFromTurnId(turnId));
+
+    if (!resolvedThreadId) {
+      throw new BridgeStoreError(
+        "INVALID_STATE",
+        `New conversation started (turn ${turnId}) but thread id could not be resolved.`,
+      );
+    }
+
+    return {
+      threadId: resolvedThreadId,
+      turnId,
     };
   }
 
@@ -242,6 +278,165 @@ export class AppServerStore implements BridgeStoreLike {
 
       throw error;
     }
+  }
+
+  private async requestTurnStartForNewThread(
+    text: string,
+    modelId: string | null | undefined,
+    accessMode: AccessMode,
+  ): Promise<{ response: Record<string, unknown>; requestedThreadId: string | null }> {
+    const baseParams = {
+      input: [
+        {
+          type: "text",
+          text,
+          text_elements: [],
+        },
+      ],
+      approvalPolicy: this.approvalPolicyFor(accessMode),
+      model: modelId ?? undefined,
+      cwd: this.bridgeInfo.cwd,
+    };
+
+    // Try thread/start first (preferred API when available).
+    // Some runtimes either don't implement it, or return busy/conflict in cases
+    // where explicit turn/start with a fresh threadId still works.
+    let threadStartError: unknown = null;
+    try {
+      const threadStarted = await this.requestAppServerStartWithOptionalSandbox("thread/start", baseParams);
+      const threadStartTurnId = this.extractTurnIdFromStartResponse(threadStarted);
+      if (threadStartTurnId) {
+        return {
+          response: threadStarted,
+          requestedThreadId: this.extractThreadIdFromStartResponse(threadStarted),
+        };
+      }
+
+      // If thread/start creates a thread but doesn't start a turn, immediately
+      // start turn explicitly against the returned thread id.
+      const createdThreadId = this.extractThreadIdFromStartResponse(threadStarted);
+      if (createdThreadId) {
+        const startedTurn = await this.requestTurnStart(createdThreadId, text, modelId, accessMode);
+        return {
+          response: {
+            ...startedTurn,
+            threadId: createdThreadId,
+          },
+          requestedThreadId: createdThreadId,
+        };
+      }
+    } catch (error) {
+      threadStartError = error;
+      if (!isMethodNotFoundError(error) && !isBusyError(error)) {
+        // Keep strict error semantics unless this is a known recoverable case.
+        throw this.mapBackendError(error);
+      }
+    }
+
+    // Fallback: explicit turn/start with a fresh threadId so app-server cannot
+    // bind to an implicit "current" thread context.
+    const generatedThreadId = newId("thread");
+    try {
+      const fallbackStarted = await this.requestTurnStart(generatedThreadId, text, modelId, accessMode);
+      return {
+        response: {
+          ...fallbackStarted,
+          threadId: generatedThreadId,
+        },
+        requestedThreadId: generatedThreadId,
+      };
+    } catch (fallbackError) {
+      throw this.mapBackendError(fallbackError ?? threadStartError ?? new Error("Could not start a new conversation."));
+    }
+  }
+
+  private async requestAppServerStartWithOptionalSandbox(
+    method: "thread/start" | "turn/start",
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    try {
+      return await this.appServer.request<Record<string, unknown>>(method, {
+        ...params,
+        sandbox: "workspace-write",
+      });
+    } catch (errorWithSandbox) {
+      const message = lowerCaseErrorMessage(errorWithSandbox);
+      const sandboxUnsupported =
+        message.includes("sandbox") &&
+        (message.includes("invalid") || message.includes("unknown") || message.includes("not allowed"));
+
+      if (!sandboxUnsupported) {
+        throw errorWithSandbox;
+      }
+
+      return this.appServer.request<Record<string, unknown>>(method, params);
+    }
+  }
+
+  private extractTurnIdFromStartResponse(response: Record<string, unknown>): string | null {
+    const turnObj = asObject(response.turn);
+    return (
+      asString(turnObj.id) ??
+      asString(turnObj.turnId) ??
+      asString(response.turnId) ??
+      asString(response.id) ??
+      null
+    );
+  }
+
+  private extractThreadIdFromStartResponse(response: Record<string, unknown>): string | null {
+    const threadObj = asObject(response.thread);
+    const turnObj = asObject(response.turn);
+
+    return (
+      asString(threadObj.id) ??
+      asString(threadObj.threadId) ??
+      asString(response.threadId) ??
+      asString(turnObj.threadId) ??
+      asString(asObject(turnObj.thread).id) ??
+      null
+    );
+  }
+
+  private async resolveThreadIdFromTurnId(turnId: string): Promise<string | null> {
+    const response = await this.appServer.request<{ data: unknown[] }>("thread/list", {
+      limit: 100,
+      cwd: this.bridgeInfo.cwd,
+      sourceKinds: ["vscode", "appServer"],
+      archived: false,
+      sortKey: "updated_at",
+    });
+
+    const items = Array.isArray(response?.data) ? response.data : [];
+    for (const rawThread of items) {
+      const thread = asObject(rawThread);
+      const candidateThreadId = asString(thread.id);
+      if (!candidateThreadId) {
+        continue;
+      }
+
+      const activeTurnHint =
+        pickString(thread, ["activeTurnId", "active_turn_id", "currentTurnId", "current_turn_id"]) ??
+        pickString(asObject(thread.activeTurn), ["id", "turnId", "turn_id"]);
+      if (activeTurnHint === turnId) {
+        return candidateThreadId;
+      }
+
+      const rawTurns = Array.isArray(thread.turns) ? thread.turns : [];
+      const hasMatchingTurn = rawTurns.some((rawTurn) => {
+        const turnObj = asObject(rawTurn);
+        return (
+          asString(turnObj.id) === turnId ||
+          asString(turnObj.turnId) === turnId ||
+          asString(turnObj.turn_id) === turnId
+        );
+      });
+      if (hasMatchingTurn) {
+        return candidateThreadId;
+      }
+    }
+
+    return null;
   }
 
   public async interruptTurn(turnId: string): Promise<TurnRecord> {
@@ -1355,6 +1550,37 @@ function isThreadNotFoundError(error: unknown): boolean {
 function isThreadNotLoadedError(error: unknown): boolean {
   const message = lowerCaseErrorMessage(error);
   return Boolean(message) && message.includes("thread not loaded");
+}
+
+function isMethodNotFoundError(error: unknown): boolean {
+  const message = lowerCaseErrorMessage(error);
+  if (!message) {
+    return false;
+  }
+
+  return (
+    message.includes("method not found") ||
+    message.includes("unknown method") ||
+    message.includes("does not exist")
+  );
+}
+
+function isBusyError(error: unknown): boolean {
+  const message = lowerCaseErrorMessage(error);
+  if (!message) {
+    return false;
+  }
+
+  return (
+    message.includes("busy") ||
+    message.includes("already running") ||
+    message.includes("in progress") ||
+    message.includes("thread is busy")
+  );
+}
+
+function isNewThreadDraftId(threadId: string): boolean {
+  return typeof threadId === "string" && threadId.startsWith(NEW_THREAD_DRAFT_PREFIX);
 }
 
 function lowerCaseErrorMessage(error: unknown): string {

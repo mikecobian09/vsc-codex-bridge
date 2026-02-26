@@ -24,8 +24,14 @@
     "onCommand:vscCodexBridge.startBridge",
     "onCommand:vscCodexBridge.stopBridge",
     "onCommand:vscCodexBridge.restartBridge",
+    "onCommand:vscCodexBridge.startHub",
+    "onCommand:vscCodexBridge.stopHub",
+    "onCommand:vscCodexBridge.restartHub",
+    "onCommand:vscCodexBridge.openPwa",
+    "onCommand:vscCodexBridge.controlPanel",
     "onCommand:vscCodexBridge.showStatus",
     "onCommand:vscCodexBridge.healthCheck",
+    "onCommand:vscCodexBridge.selfCheck",
     "onCommand:vscCodexBridge.autoDetectAppServerAttachUrl"
   ],
   "main": "./out/extension.js",
@@ -44,12 +50,36 @@
         "title": "VSC Codex Bridge: Restart Bridge"
       },
       {
+        "command": "vscCodexBridge.startHub",
+        "title": "VSC Codex Bridge: Start Hub"
+      },
+      {
+        "command": "vscCodexBridge.stopHub",
+        "title": "VSC Codex Bridge: Stop Hub"
+      },
+      {
+        "command": "vscCodexBridge.restartHub",
+        "title": "VSC Codex Bridge: Restart Hub"
+      },
+      {
+        "command": "vscCodexBridge.openPwa",
+        "title": "VSC Codex Bridge: Open PWA"
+      },
+      {
+        "command": "vscCodexBridge.controlPanel",
+        "title": "VSC Codex Bridge: Control Panel"
+      },
+      {
         "command": "vscCodexBridge.showStatus",
         "title": "VSC Codex Bridge: Show Status"
       },
       {
         "command": "vscCodexBridge.healthCheck",
         "title": "VSC Codex Bridge: Health Check"
+      },
+      {
+        "command": "vscCodexBridge.selfCheck",
+        "title": "VSC Codex Bridge: Self Check"
       },
       {
         "command": "vscCodexBridge.autoDetectAppServerAttachUrl",
@@ -62,7 +92,7 @@
         "vscCodexBridge.hubUrl": {
           "type": "string",
           "default": "http://127.0.0.1:7777",
-          "description": "Base URL of the Codex Hub used for bridge registration and heartbeat."
+          "description": "Base URL of the Codex Hub used for bridge registration and heartbeat when manageHubInExtension is disabled."
         },
         "vscCodexBridge.hubRegisterPath": {
           "type": "string",
@@ -77,7 +107,24 @@
         "vscCodexBridge.hubToken": {
           "type": "string",
           "default": "",
-          "description": "Optional Bearer token for Hub API authentication."
+          "description": "Optional Bearer token for Hub API authentication. Reused by managed hub mode."
+        },
+        "vscCodexBridge.manageHubInExtension": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run hub process from inside this extension so users only need to install one VSIX."
+        },
+        "vscCodexBridge.managedHubBindHost": {
+          "type": "string",
+          "default": "0.0.0.0",
+          "description": "Bind host for extension-managed hub process."
+        },
+        "vscCodexBridge.managedHubPort": {
+          "type": "number",
+          "default": 7777,
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Bind port for extension-managed hub process."
         },
         "vscCodexBridge.backendMode": {
           "type": "string",
@@ -170,7 +217,8 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
-    "vscode:prepublish": "npm run compile",
+    "prepare:runtime": "node ./scripts/prepare-runtime.js",
+    "vscode:prepublish": "npm run compile && npm run prepare:runtime",
     "test": "npm run compile && node --test out/test/appServerStore.regression.test.js"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 # Architecture
 
 Version: 0.1  
-Last updated: 2026-02-25  
+Last updated: 2026-02-26  
 Status: Living design document
 
 This document describes the target architecture for **VSC Codex Bridge** and should evolve alongside implementation.
@@ -25,7 +25,7 @@ Primary architectural goals:
 ### In scope (MVP)
 - Single-user operation.
 - One bridge per VS Code window (single-root workspace).
-- Hub as the only public interface for PWA/Electron.
+- Hub as the only public interface for PWA clients.
 - Mobile support through polling/streaming depending on event source capabilities.
 - Local JSON persistence for runtime config and operational metadata.
 
@@ -119,16 +119,16 @@ Non-responsibilities:
 - Secret storage beyond session-friendly client state.
 - Direct bridge communication.
 
-## 5.4 Electron menubar app
+## 5.4 Extension-managed runtime model
 
 Responsibilities:
-- Local operational UX for hub lifecycle.
-- Configuration editor for networking, token, defaults.
-- Status and diagnostics surface.
+- Keep hub lifecycle close to VS Code workflow (extension-managed mode).
+- Provide command-based operations (`Start Hub`, `Stop Hub`, `Restart Hub`, `Open PWA`).
+- Keep one-install path for end users (VSIX only).
 
 Non-responsibilities:
 - Replacing hub web API.
-- Owning business logic already in hub.
+- Owning bridge/hub domain logic outside extension lifecycle concerns.
 
 ---
 
@@ -365,7 +365,7 @@ Initial assumptions:
 - Serve PWA through hub.
 
 ## 15.2 Operational mode
-- Hub as daemon or Electron-managed process.
+- Hub managed by extension runtime (default) or standalone daemon in development.
 - PWA consumed from mobile browser.
 - Optional Tailscale path for private remote access.
 

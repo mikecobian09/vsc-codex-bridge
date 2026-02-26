@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            packages/bridge-vscode/package-lock.json
+            packages/hub/package-lock.json
+            packages/electron/package-lock.json
+
+      - name: Install bridge dependencies
+        run: npm --prefix packages/bridge-vscode ci
+
+      - name: Install hub dependencies
+        run: npm --prefix packages/hub ci
+
+      - name: Install electron dependencies
+        run: npm --prefix packages/electron ci
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Run bridge tests
+        run: npm run test:bridge
+
+      - name: Run hub tests
+        run: npm run test:hub

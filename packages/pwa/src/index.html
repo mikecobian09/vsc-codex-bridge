@@ -12,7 +12,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon.svg" />
     <title>VSC Codex Bridge</title>
-    <link rel="stylesheet" href="./styles.css?v=20260225-24" />
+    <link rel="stylesheet" href="./styles.css?v=20260226-27" />
   </head>
   <body>
     <div class="ambient-glow" aria-hidden="true"></div>
@@ -30,12 +30,6 @@
         </div>
 
         <div class="topbar__actions">
-          <div class="topbar__pills">
-            <span id="connection-pill" class="pill" data-tone="idle">Disconnected</span>
-            <span id="stream-pill" class="pill" data-tone="idle">Stream idle</span>
-            <span id="thinking-pill" class="pill" data-tone="idle">Idle</span>
-          </div>
-
           <button
             id="topbar-toggle"
             class="icon-button icon-button--header"
@@ -45,6 +39,12 @@
           >
             <span class="topbar-chevron" aria-hidden="true"></span>
           </button>
+        </div>
+
+        <div class="topbar__pills">
+          <span id="connection-pill" class="pill" data-tone="idle">Disconnected</span>
+          <span id="stream-pill" class="pill" data-tone="idle">Stream idle</span>
+          <span id="thinking-pill" class="pill" data-tone="idle">Idle</span>
         </div>
       </header>
 
@@ -87,6 +87,7 @@
             <button id="load-bridges" type="button">Connect</button>
           </div>
 
+          <p id="security-status" class="status" data-tone="info">Security posture: unknown.</p>
           <p id="status" class="status" data-tone="info">Ready.</p>
         </section>
 
@@ -152,6 +153,6 @@
       </main>
     </div>
 
-    <script src="./app.js?v=20260225-24" type="module"></script>
+    <script src="./app.js?v=20260226-27" type="module"></script>
   </body>
 </html>

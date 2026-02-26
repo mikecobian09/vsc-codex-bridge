@@ -3,6 +3,7 @@ import { readConfig } from "./config";
 import { BridgeServer } from "./bridgeServer";
 import { HubClient, HubRegistrationState } from "./hubClient";
 import { Logger } from "./logger";
+import { ManagedHubRuntime } from "./managedHubRuntime";
 import { AppServerStore } from "./appServerStore";
 import { BridgeStore } from "./store";
 import { BridgeStoreLike } from "./storeContracts";
@@ -13,6 +14,7 @@ export class BridgeController {
   private store: BridgeStoreLike | null = null;
   private server: BridgeServer | null = null;
   private hubClient: HubClient | null = null;
+  private managedHub: ManagedHubRuntime;
   private running = false;
   private startInProgress = false;
   private lastStartError: string | null = null;
@@ -22,10 +24,12 @@ export class BridgeController {
 
   public constructor(
     private readonly extensionVersion: string,
+    private readonly context: vscode.ExtensionContext,
     private readonly logger: Logger,
     private readonly statusBar: vscode.StatusBarItem,
   ) {
     this.config = readConfig();
+    this.managedHub = new ManagedHubRuntime(context, logger);
     this.logger.setVerbose(this.config.verboseLogs);
     this.refreshStatusBar();
   }
@@ -74,6 +78,12 @@ export class BridgeController {
         startedAt: nowIso(),
         bridgeVersion: this.extensionVersion,
       };
+
+      if (this.config.managedHub.enabled) {
+        await this.managedHub.start(this.config);
+      } else {
+        await this.managedHub.stop();
+      }
 
       if (this.config.runtime.backendMode === "app-server") {
         this.store = new AppServerStore(
@@ -126,6 +136,8 @@ export class BridgeController {
 
     await this.store?.dispose();
     this.store = null;
+
+    await this.managedHub.stop();
 
     this.running = false;
     this.refreshStatusBar();
@@ -184,6 +196,9 @@ export class BridgeController {
       `CWD: ${meta.cwd}`,
       `Internal API: http://${address.host}:${address.port}`,
       `Hub: ${this.config.hub.hubUrl}`,
+      `Managed hub in extension: ${this.config.managedHub.enabled ? "enabled" : "disabled"}`,
+      `Managed hub state: ${this.managedHub.getState().mode}`,
+      `PWA URL: ${this.getPwaUrl()}`,
       `Backend: ${this.config.runtime.backendMode}`,
       `Auto-start on window open: ${this.config.runtime.autoStartBridge}`,
       `App-server mode: ${this.config.appServer.mode}`,
@@ -211,6 +226,7 @@ export class BridgeController {
       address,
       bridge: bridgeMeta,
       hubRegistration,
+      managedHub: this.managedHub.getState(),
       config: {
         hubUrl: this.config.hub.hubUrl,
         hubRegisterPath: this.config.hub.hubRegisterPath,
@@ -224,15 +240,69 @@ export class BridgeController {
         appServerHost: this.config.appServer.host,
         appServerStartupTimeoutMs: this.config.appServer.startupTimeoutMs,
         autoStartBridge: this.config.runtime.autoStartBridge,
+        manageHubInExtension: this.config.managedHub.enabled,
+        managedHubBindHost: this.config.managedHub.bindHost,
+        managedHubPort: this.config.managedHub.port,
         fullAccessAutoApprove: this.config.runtime.fullAccessAutoApprove,
         verboseLogs: this.config.verboseLogs,
       },
     };
   }
 
+  public async startManagedHub(): Promise<void> {
+    this.config = readConfig();
+    this.logger.setVerbose(this.config.verboseLogs);
+    if (!this.config.managedHub.enabled) {
+      throw new Error("Managed hub is disabled. Enable vscCodexBridge.manageHubInExtension first.");
+    }
+    await this.managedHub.start(this.config);
+    this.refreshStatusBar();
+  }
+
+  public async stopManagedHub(): Promise<void> {
+    await this.managedHub.stop();
+    this.refreshStatusBar();
+  }
+
+  public async restartManagedHub(): Promise<void> {
+    this.config = readConfig();
+    this.logger.setVerbose(this.config.verboseLogs);
+    if (!this.config.managedHub.enabled) {
+      throw new Error("Managed hub is disabled. Enable vscCodexBridge.manageHubInExtension first.");
+    }
+    await this.managedHub.restart(this.config);
+    this.refreshStatusBar();
+  }
+
+  public getPwaUrl(): string {
+    if (this.config.managedHub.enabled) {
+      return this.managedHub.getPwaUrl();
+    }
+
+    if (!this.config.hub.hubToken) {
+      return this.config.hub.hubUrl;
+    }
+
+    try {
+      const url = new URL(this.config.hub.hubUrl);
+      url.searchParams.set("token", this.config.hub.hubToken);
+      return url.toString();
+    } catch {
+      return this.config.hub.hubUrl;
+    }
+  }
+
   private refreshStatusBar(): void {
-    this.statusBar.text = this.running ? "$(plug) Bridge: On" : "$(circle-slash) Bridge: Off";
-    this.statusBar.tooltip = this.running ? "VSC Codex Bridge is running" : "VSC Codex Bridge is stopped";
+    const hubState = this.managedHub.getState();
+    const hubToken = this.config.managedHub.enabled
+      ? hubState.mode === "running" || hubState.mode === "external"
+        ? "Hub: On"
+        : "Hub: Off"
+      : "Hub: External";
+    this.statusBar.text = this.running ? `$(plug) Bridge: On | ${hubToken}` : `$(circle-slash) Bridge: Off | ${hubToken}`;
+    this.statusBar.tooltip = this.running
+      ? `VSC Codex Bridge is running. ${hubToken}`
+      : `VSC Codex Bridge is stopped. ${hubToken}`;
   }
 
   private runInLifecycleQueue<T>(operation: () => Promise<T>): Promise<T> {

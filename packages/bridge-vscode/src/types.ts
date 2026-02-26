@@ -115,6 +115,12 @@ export interface BridgeRuntimeConfig {
   autoStartBridge: boolean;
 }
 
+export interface ManagedHubConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+}
+
 export interface AppServerConfig {
   mode: AppServerMode;
   attachUrl: string | null;
@@ -143,5 +149,6 @@ export interface ExtensionConfig {
   hub: HubConfig;
   appServer: AppServerConfig;
   runtime: BridgeRuntimeConfig;
+  managedHub: ManagedHubConfig;
   verboseLogs: boolean;
 }

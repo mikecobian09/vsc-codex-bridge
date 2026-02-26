@@ -38,6 +38,8 @@ interface ExecutionState {
   timer: NodeJS.Timeout;
 }
 
+const NEW_THREAD_DRAFT_PREFIX = "__draft_new_thread__";
+
 export class BridgeStore implements BridgeStoreLike {
   private readonly emitter = new EventEmitter();
   private readonly threads = new Map<string, ThreadState>();
@@ -91,7 +93,8 @@ export class BridgeStore implements BridgeStoreLike {
       throw new BridgeStoreError("INVALID_INPUT", "Message text is required.");
     }
 
-    const thread = this.getOrCreateThread(threadId);
+    const resolvedThreadId = isNewThreadDraftId(threadId) ? newId("thread") : threadId;
+    const thread = this.getOrCreateThread(resolvedThreadId);
     if (thread.summary.activeTurnId) {
       throw new BridgeStoreError("BUSY", "Thread is busy with an active turn.");
     }
@@ -103,7 +106,7 @@ export class BridgeStore implements BridgeStoreLike {
 
     const turn: TurnRecord = {
       turnId,
-      threadId,
+      threadId: resolvedThreadId,
       status: "running",
       accessMode,
       modelId,
@@ -132,7 +135,7 @@ export class BridgeStore implements BridgeStoreLike {
       kind: "message",
     });
 
-    this.threadLocks.set(threadId, turnId);
+    this.threadLocks.set(resolvedThreadId, turnId);
 
     this.emitTurnEvent(turn, "turn/started", {
       accessMode,
@@ -157,7 +160,7 @@ export class BridgeStore implements BridgeStoreLike {
       });
       return {
         turnId,
-        threadId,
+        threadId: resolvedThreadId,
       };
     }
 
@@ -177,7 +180,7 @@ export class BridgeStore implements BridgeStoreLike {
       this.startExecution(turn);
       return {
         turnId,
-        threadId,
+        threadId: resolvedThreadId,
       };
     }
 
@@ -193,7 +196,7 @@ export class BridgeStore implements BridgeStoreLike {
 
     return {
       turnId,
-      threadId,
+      threadId: resolvedThreadId,
     };
   }
 
@@ -536,6 +539,10 @@ function buildDefaultPlan(userText: string): TurnRecord["plan"] {
       status: "pending",
     },
   ];
+}
+
+function isNewThreadDraftId(threadId: string): boolean {
+  return typeof threadId === "string" && threadId.startsWith(NEW_THREAD_DRAFT_PREFIX);
 }
 
 function buildSimulatedAssistantResponse(userText: string, mode: AccessMode): string {

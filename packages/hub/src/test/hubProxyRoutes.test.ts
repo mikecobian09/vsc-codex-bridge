@@ -184,12 +184,45 @@ test("forward helper returns NOT_FOUND when bridge is missing", async () => {
   assert.equal(payload.message, "Bridge missing-bridge is offline or unknown.");
 });
 
+test("exposes runtime security posture endpoint without leaking token", async () => {
+  const runtimeConfig: HubConfig = {
+    ...TEST_HUB_CONFIG,
+    bindHost: "0.0.0.0",
+    authToken: "short-token",
+  };
+  const realHubServer = new HubServer(runtimeConfig, new BridgeRegistry(runtimeConfig.bridgeTtlMs), new Logger(false));
+  const response = createMockResponse();
+  const request = createGetRequest();
+  const parsedUrl = new URL("/api/v1/runtime/security", "http://127.0.0.1:7777");
+
+  await (realHubServer as any).handleApiRequest("GET", parsedUrl, request, response.raw, "test-security");
+
+  assert.equal(response.state.statusCode, 200);
+  const payload = JSON.parse(response.state.body);
+  assert.equal(payload.posture, "warn");
+  assert.equal(payload.bindHost, "0.0.0.0");
+  assert.equal(payload.authEnabled, true);
+  assert.equal(payload.tokenLength, "short-token".length);
+  assert.ok(Array.isArray(payload.warnings));
+  assert.equal(typeof payload.authToken, "undefined");
+});
+
 function createJsonRequest(body: Record<string, unknown> | null): IncomingMessage {
   const payload = body === null ? "" : JSON.stringify(body);
   const readable = Readable.from(payload ? [payload] : []);
   const request = readable as unknown as IncomingMessage;
   request.headers = { "content-type": "application/json" };
   request.method = "POST";
+  request.url = "/";
+  request.socket = { remoteAddress: "127.0.0.1" } as any;
+  return request;
+}
+
+function createGetRequest(): IncomingMessage {
+  const readable = Readable.from([]);
+  const request = readable as unknown as IncomingMessage;
+  request.headers = {};
+  request.method = "GET";
   request.url = "/";
   request.socket = { remoteAddress: "127.0.0.1" } as any;
   return request;

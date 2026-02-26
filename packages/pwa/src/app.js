@@ -4,7 +4,7 @@ const API_TIMEOUT_MS = 10_000;
 const OBSERVED_ACTIVE_TURN_TTL_MS = 90_000;
 const THINKING_GRACE_MS = 3_000;
 const RECENT_COMPLETION_WINDOW_MS = 10_000;
-const BUILD_VERSION = "20260225-24";
+const BUILD_VERSION = "20260226-27";
 const DEBUG_THINKING_LOGS = true;
 const MAX_EVENT_LINES = 400;
 const MOBILE_BREAKPOINT_PX = 900;
@@ -22,6 +22,7 @@ const TIMELINE_WINDOW_INITIAL_MESSAGES = 140;
 const TIMELINE_WINDOW_STEP_MESSAGES = 120;
 const KEYBOARD_OPEN_THRESHOLD_PX = 90;
 const DEFAULT_HUB_ORIGIN = resolveHubOrigin();
+const NEW_THREAD_DRAFT_PREFIX = "__draft_new_thread__";
 
 /**
  * Central UI state for the PWA.
@@ -42,6 +43,7 @@ const state = {
 
   bridges: [],
   threadByBridge: new Map(),
+  draftThreadByBridge: new Map(),
   threadDetail: null,
   threadDetailBridgeId: null,
 
@@ -64,6 +66,7 @@ const state = {
   isOffline: typeof navigator !== "undefined" ? navigator.onLine === false : false,
   isHubReachable: true,
   lastHubErrorMessage: null,
+  hubSecurity: null,
   viewportBaseHeight: 0,
   keyboardInsetPx: 0,
   isKeyboardOpen: false,
@@ -107,6 +110,7 @@ const dom = {
   saveConfig: document.getElementById("save-config"),
   loadBridges: document.getElementById("load-bridges"),
   status: document.getElementById("status"),
+  securityStatus: document.getElementById("security-status"),
 
   threadTitle: document.getElementById("thread-title"),
   threadMeta: document.getElementById("thread-meta"),
@@ -154,6 +158,7 @@ function bootstrap() {
   updateThinkingState(null);
   updateStreamPill("idle", "Stream idle");
   updateConnectionBanner();
+  renderSecurityStatus();
   updatePrimaryAction();
   setTopbarExpanded(false);
   syncScrollAffordances();
@@ -481,6 +486,12 @@ async function loadBridges() {
     const items = Array.isArray(payload?.items) ? payload.items : [];
 
     state.bridges = items;
+    const bridgeIds = new Set(items.map((item) => item.bridgeId));
+    for (const draftBridgeId of state.draftThreadByBridge.keys()) {
+      if (!bridgeIds.has(draftBridgeId)) {
+        state.draftThreadByBridge.delete(draftBridgeId);
+      }
+    }
 
     if (state.selectedBridgeId && !items.some((item) => item.bridgeId === state.selectedBridgeId)) {
       state.selectedBridgeId = null;
@@ -492,6 +503,7 @@ async function loadBridges() {
     }
 
     renderWorkspaceTree();
+    await refreshHubSecurityStatus();
 
     if (state.selectedBridgeId) {
       await loadThreads(state.selectedBridgeId, {
@@ -515,8 +527,10 @@ async function loadBridges() {
     renderWorkspaceTree();
 
     setStatus(`Connection failed: ${String(error)}`, true);
-    updateConnectionPill("warn", "Connection failed");
+    updateConnectionPill("danger", "Connection failed");
     updateStreamPill("warn", "Stream offline");
+    state.hubSecurity = null;
+    renderSecurityStatus();
   }
 }
 
@@ -562,6 +576,32 @@ async function loadThreads(bridgeId, options = {}) {
     const items = Array.isArray(payload?.items) ? payload.items : [];
     state.threadByBridge.set(bridgeId, items);
     state.loadingThreadsBridgeId = null;
+
+    if (preferredThreadId && isDraftThreadId(preferredThreadId)) {
+      const draft = ensureDraftThreadForBridge(bridgeId, preferredThreadId);
+      state.selectedThreadId = draft.threadId;
+      state.selectedTurnId = null;
+      state.threadDetail = null;
+      state.threadDetailBridgeId = null;
+      state.liveAssistantByTurn.clear();
+      state.messagesRenderSignature = "";
+      state.threadDetailRefreshQueued = false;
+      state.isThreadSelectionLoading = false;
+      closeStreamAndPolling();
+
+      persistState();
+      renderWorkspaceTree();
+      updateConversationHeader({ thread: draft, messages: [], turns: [] });
+      renderMessages({ thread: draft, messages: [], turns: [] }, { force: true });
+      renderApprovals(null);
+      updateThinkingState(null);
+      updatePrimaryAction();
+
+      if (showStatus) {
+        setStatus("New conversation ready.");
+      }
+      return;
+    }
 
     if (items.length === 0) {
       state.selectedThreadId = null;
@@ -620,6 +660,11 @@ async function openThread(threadId, options = { showStatus: true }) {
     return;
   }
 
+  if (isDraftThreadId(threadId)) {
+    await startNewConversationDraft(state.selectedBridgeId);
+    return;
+  }
+
   const viewOnDifferentBridge = state.threadDetailBridgeId && state.threadDetailBridgeId !== state.selectedBridgeId;
   if (state.selectedThreadId !== threadId || viewOnDifferentBridge) {
     resetActiveThreadView();
@@ -645,10 +690,70 @@ async function openThread(threadId, options = { showStatus: true }) {
 }
 
 /**
+ * Creates/selects a local draft thread entry used to start a brand new conversation.
+ * The real thread id is resolved after the first message is sent.
+ */
+async function startNewConversationDraft(bridgeId) {
+  if (!bridgeId) {
+    setStatus("Select a workspace first.", true);
+    return;
+  }
+
+  const selectedBridgeId = state.selectedBridgeId;
+  if (selectedBridgeId !== bridgeId) {
+    await loadThreads(bridgeId, { showStatus: false });
+  }
+
+  const draft = ensureDraftThreadForBridge(bridgeId);
+
+  state.selectedBridgeId = bridgeId;
+  resetActiveThreadView();
+  stopPolling();
+  state.selectedThreadId = draft.threadId;
+  state.selectedTurnId = null;
+  state.threadDetail = null;
+  state.threadDetailBridgeId = null;
+  state.isThreadSelectionLoading = false;
+
+  persistState();
+  renderWorkspaceTree();
+  updateConversationHeader({ thread: draft, messages: [], turns: [] });
+  renderMessages({ thread: draft, messages: [], turns: [] }, { force: true });
+  renderApprovals(null);
+  updateThinkingState(null);
+  updatePrimaryAction();
+  setStatus("New conversation ready. Write a prompt and tap send.");
+
+  if (window.innerWidth <= MOBILE_BREAKPOINT_PX) {
+    closeDrawer();
+  }
+}
+
+function ensureDraftThreadForBridge(bridgeId, existingThreadId = null) {
+  const now = new Date().toISOString();
+  const threadId = existingThreadId || draftThreadIdForBridge(bridgeId);
+
+  const draft = {
+    threadId,
+    title: "New conversation",
+    createdAt: now,
+    updatedAt: now,
+    status: "idle",
+    activeTurnId: null,
+  };
+
+  state.draftThreadByBridge.set(bridgeId, draft);
+  return draft;
+}
+
+/**
  * Pulls thread detail and updates timeline + thinking state.
  */
 async function refreshThreadDetail(options = { showStatus: false }) {
   if (!state.selectedBridgeId || !state.selectedThreadId) {
+    return;
+  }
+  if (isDraftThreadId(state.selectedThreadId)) {
     return;
   }
 
@@ -824,24 +929,47 @@ function renderWorkspaceTree() {
     card.appendChild(workspaceBtn);
 
     const threads = state.threadByBridge.get(bridge.bridgeId) || [];
+    const draft = state.draftThreadByBridge.get(bridge.bridgeId) || null;
     const shouldExpand = bridge.bridgeId === state.selectedBridgeId;
 
     if (shouldExpand) {
-      if (threads.length === 0 && state.loadingThreadsBridgeId !== bridge.bridgeId) {
+      const actionsRow = document.createElement("div");
+      actionsRow.className = "workspace-card__actions";
+
+      const newThreadBtn = document.createElement("button");
+      newThreadBtn.type = "button";
+      newThreadBtn.className = "workspace-card__new-thread";
+      newThreadBtn.textContent = "+ New conversation";
+      newThreadBtn.addEventListener("click", () => {
+        void startNewConversationDraft(bridge.bridgeId);
+      });
+      actionsRow.appendChild(newThreadBtn);
+      card.appendChild(actionsRow);
+
+      const visibleThreads = draft
+        ? [draft, ...threads.filter((item) => item.threadId !== draft.threadId)]
+        : threads;
+
+      if (visibleThreads.length === 0 && state.loadingThreadsBridgeId !== bridge.bridgeId) {
         const emptyThreads = document.createElement("div");
         emptyThreads.className = "tree-empty";
         emptyThreads.textContent = "No threads.";
         card.appendChild(emptyThreads);
-      } else if (threads.length > 0) {
+      } else if (visibleThreads.length > 0) {
         const threadList = document.createElement("ul");
         threadList.className = "thread-list";
 
-        for (const thread of threads) {
+        for (const thread of visibleThreads) {
           const li = document.createElement("li");
 
           const threadBtn = document.createElement("button");
           threadBtn.type = "button";
           threadBtn.className = "thread-item";
+          const draftThread = isDraftThreadId(thread.threadId);
+
+          if (draftThread) {
+            threadBtn.classList.add("is-draft");
+          }
 
           if (thread.threadId === state.selectedThreadId) {
             threadBtn.classList.add("is-active");
@@ -853,9 +981,11 @@ function renderWorkspaceTree() {
           threadTitle.textContent = threadTitleText;
           threadTitle.title = threadTitleText;
 
-          const statusLabel = thread.activeTurnId
-            ? `running ${threadIdShort(thread.activeTurnId)}`
-            : `${thread.status || "idle"} - ${formatDateTime(thread.updatedAt)}`;
+          const statusLabel = draftThread
+            ? "not sent yet"
+            : thread.activeTurnId
+              ? `running ${threadIdShort(thread.activeTurnId)}`
+              : `${thread.status || "idle"} - ${formatDateTime(thread.updatedAt)}`;
 
           const threadMeta = document.createElement("span");
           threadMeta.className = "thread-item__meta";
@@ -867,6 +997,10 @@ function renderWorkspaceTree() {
           threadBtn.appendChild(threadMeta);
 
           threadBtn.addEventListener("click", () => {
+            if (draftThread) {
+              void startNewConversationDraft(bridge.bridgeId);
+              return;
+            }
             void openThread(thread.threadId);
           });
 
@@ -1447,6 +1581,12 @@ function updateConversationHeader(detail) {
   }
 
   if (!detail?.thread) {
+    if (isDraftThreadId(state.selectedThreadId)) {
+      dom.threadTitle.textContent = "New conversation";
+      dom.threadMeta.textContent = `Workspace ${threadIdShort(state.selectedBridgeId)}`;
+      return;
+    }
+
     dom.threadTitle.textContent = `Thread ${threadIdShort(state.selectedThreadId)}`;
     dom.threadMeta.textContent = `Workspace ${threadIdShort(state.selectedBridgeId)}`;
     return;
@@ -1486,7 +1626,11 @@ function updateThinkingState(detail) {
     dom.thinkingIndicator.hidden = false;
     setThinkingIndicatorText(workspaceActiveTurn ? "Codex is thinking in another thread" : "Codex is thinking");
     dom.thinkingPill.dataset.tone = "warn";
-    dom.thinkingPill.textContent = visibleThinkingTurn.status === "waiting_approval" ? "Waiting approval" : "Thinking";
+    setPillText(
+      dom.thinkingPill,
+      visibleThinkingTurn.status === "waiting_approval" ? "Waiting approval" : "Thinking",
+      visibleThinkingTurn.status === "waiting_approval" ? "WAIT" : "THINK",
+    );
   } else if (hasGrace) {
     // Briefly keep indicator visible so short turns are not visually missed.
     state.isThinking = false;
@@ -1494,7 +1638,7 @@ function updateThinkingState(detail) {
     dom.thinkingIndicator.hidden = false;
     setThinkingIndicatorText("Codex is thinking");
     dom.thinkingPill.dataset.tone = "warn";
-    dom.thinkingPill.textContent = "Thinking";
+    setPillText(dom.thinkingPill, "Thinking", "THINK");
   } else {
     state.isThinking = false;
     state.activeTurnStatus = null;
@@ -1502,7 +1646,7 @@ function updateThinkingState(detail) {
     dom.thinkingIndicator.hidden = true;
     setThinkingIndicatorText("Codex is thinking");
     dom.thinkingPill.dataset.tone = "idle";
-    dom.thinkingPill.textContent = "Idle";
+    setPillText(dom.thinkingPill, "Idle", "IDLE");
   }
 
   // Stop button only makes sense while the selected thread is running/waiting.
@@ -1595,12 +1739,16 @@ function captureRecentThreadActivity(detail) {
 
 function updateConnectionPill(tone, text) {
   dom.connectionPill.dataset.tone = tone;
-  dom.connectionPill.textContent = text;
+  const shortText =
+    tone === "ok" ? "ON" : tone === "danger" ? "ERR" : tone === "warn" ? "RETRY" : "IDLE";
+  setPillText(dom.connectionPill, text, shortText);
 }
 
 function updateStreamPill(tone, text) {
   dom.streamPill.dataset.tone = tone;
-  dom.streamPill.textContent = text;
+  const shortText =
+    tone === "ok" ? "LIVE" : tone === "danger" ? "ERR" : tone === "warn" ? "RETRY" : "IDLE";
+  setPillText(dom.streamPill, text, shortText);
   updateConnectionBanner();
 }
 
@@ -1681,6 +1829,50 @@ function updateConnectionBanner() {
   dom.connectionBannerText.textContent = text;
   dom.connectionBannerRetry.hidden = !allowRetry;
   dom.connectionBanner.hidden = false;
+}
+
+async function refreshHubSecurityStatus() {
+  try {
+    const payload = await apiRequest("/api/v1/runtime/security", { method: "GET" });
+    state.hubSecurity = payload && typeof payload === "object" ? payload : null;
+    renderSecurityStatus();
+  } catch {
+    state.hubSecurity = null;
+    renderSecurityStatus();
+  }
+}
+
+function renderSecurityStatus() {
+  if (!dom.securityStatus) {
+    return;
+  }
+
+  const posture = asObject(state.hubSecurity);
+  if (!posture || Object.keys(posture).length === 0) {
+    dom.securityStatus.dataset.tone = "info";
+    dom.securityStatus.textContent = "Security posture: unavailable.";
+    return;
+  }
+
+  const tone = asString(posture.posture) || "info";
+  const warnings = Array.isArray(posture.warnings) ? posture.warnings.map((item) => String(item)) : [];
+  const bindHost = asString(posture.bindHost) || "unknown";
+  const authEnabled = Boolean(posture.authEnabled);
+
+  if (tone === "danger") {
+    dom.securityStatus.dataset.tone = "error";
+    dom.securityStatus.textContent = warnings[0] || "Security posture: risky configuration detected.";
+    return;
+  }
+
+  if (tone === "warn") {
+    dom.securityStatus.dataset.tone = "warn";
+    dom.securityStatus.textContent = warnings[0] || "Security posture: caution recommended.";
+    return;
+  }
+
+  dom.securityStatus.dataset.tone = "ok";
+  dom.securityStatus.textContent = `Security posture: ${bindHost} (${authEnabled ? "token enabled" : "localhost-only mode"}).`;
 }
 
 async function retryConnectivityNow() {
@@ -1795,6 +1987,7 @@ async function jumpToWorkspaceActiveThread() {
  */
 async function sendMessage() {
   const requestedThreadId = state.selectedThreadId;
+  const requestStartsNewConversation = isDraftThreadId(requestedThreadId);
   const text = dom.prompt.value.trim();
   if (!text) {
     setStatus("Message is required.", true);
@@ -1804,7 +1997,11 @@ async function sendMessage() {
   const modelId = dom.modelId.value.trim() || null;
   const accessMode = dom.accessMode.value;
 
-  setStatus(`Starting turn in ${threadIdShort(state.selectedThreadId)}...`);
+  if (requestStartsNewConversation) {
+    setStatus("Starting new conversation...");
+  } else {
+    setStatus(`Starting turn in ${threadIdShort(state.selectedThreadId)}...`);
+  }
 
   try {
     const payload = await apiRequest(
@@ -1821,6 +2018,11 @@ async function sendMessage() {
 
     dom.prompt.value = "";
     const resolvedThreadId = asString(payload?.threadId) || requestedThreadId;
+    if (requestStartsNewConversation && resolvedThreadId && !isDraftThreadId(resolvedThreadId)) {
+      state.draftThreadByBridge.delete(state.selectedBridgeId);
+      state.selectedThreadId = resolvedThreadId;
+      persistState();
+    }
 
     if (payload?.turnId) {
       state.selectedTurnId = payload.turnId;
@@ -1840,7 +2042,7 @@ async function sendMessage() {
 
       // Keep thinking state visible even if the first detail snapshot lags.
       rememberObservedActiveTurn(
-        asString(payload?.threadId) || requestedThreadId,
+        resolvedThreadId,
         payload.turnId,
         "running",
       );
@@ -1850,9 +2052,15 @@ async function sendMessage() {
     }
 
     await refreshThreadsForSelectedBridge();
-    await refreshThreadDetail();
+    if (requestStartsNewConversation && resolvedThreadId && !isDraftThreadId(resolvedThreadId)) {
+      await openThread(resolvedThreadId, { showStatus: false });
+    } else {
+      await refreshThreadDetail();
+    }
 
-    if (resolvedThreadId && resolvedThreadId !== requestedThreadId) {
+    if (requestStartsNewConversation && resolvedThreadId && !isDraftThreadId(resolvedThreadId)) {
+      setStatus(`Turn started (${threadIdShort(payload?.turnId)}) in new conversation.`);
+    } else if (resolvedThreadId && resolvedThreadId !== requestedThreadId) {
       setStatus(
         `Turn started (${threadIdShort(payload?.turnId)}). Kept selected thread ${threadIdShort(requestedThreadId)}.`,
       );
@@ -1860,7 +2068,12 @@ async function sendMessage() {
       setStatus(`Turn started (${threadIdShort(payload?.turnId)}).`);
     }
   } catch (error) {
-    setStatus(`Send failed: ${String(error)}`, true);
+    const errorText = String(error);
+    if (requestStartsNewConversation && /busy|in progress|already running/i.test(errorText)) {
+      setStatus("Cannot start a new conversation while another turn is running. Open active thread or stop it first.", true);
+    } else {
+      setStatus(`Send failed: ${errorText}`, true);
+    }
   } finally {
     updatePrimaryAction();
   }
@@ -2061,6 +2274,9 @@ function closeStreamAndPolling() {
 
 function ensurePolling() {
   if (!state.selectedBridgeId || !state.selectedThreadId) {
+    return;
+  }
+  if (isDraftThreadId(state.selectedThreadId)) {
     return;
   }
 
@@ -2797,6 +3013,13 @@ async function refreshThreadsForSelectedBridge() {
       return;
     }
 
+    if (state.selectedThreadId && isDraftThreadId(state.selectedThreadId)) {
+      renderWorkspaceTree();
+      updateThinkingState(state.threadDetail);
+      updatePrimaryAction();
+      return;
+    }
+
     if (!state.selectedThreadId) {
       const fallback = items.find((item) => item.activeTurnId) || items[0];
       state.selectedThreadId = fallback.threadId;
@@ -3383,6 +3606,7 @@ function clearSelectionState() {
   state.threadDetail = null;
   state.threadDetailBridgeId = null;
   state.liveAssistantByTurn.clear();
+  state.draftThreadByBridge.clear();
   state.observedActiveTurnByThread.clear();
   state.timelineRenderLimitByThread.clear();
   state.lastSelectedThreadUpdatedAt = null;
@@ -3434,6 +3658,7 @@ function setTopbarExpanded(expanded) {
   dom.topbar.classList.toggle("is-collapsed", !expanded);
   dom.topbarToggle.setAttribute("aria-expanded", expanded ? "true" : "false");
   dom.topbarToggle.setAttribute("aria-label", expanded ? "Minimize header" : "Expand header");
+  syncTopbarPillLabels();
 }
 
 function syncScrollAffordances() {
@@ -3472,6 +3697,22 @@ function normalizePlanItem(rawItem) {
     text,
     status,
   };
+}
+
+function setPillText(pillElement, fullText, shortText) {
+  const full = String(fullText || "");
+  const short = String(shortText || full);
+  pillElement.dataset.full = full;
+  pillElement.dataset.short = short;
+  pillElement.textContent = state.isTopbarExpanded ? full : short;
+}
+
+function syncTopbarPillLabels() {
+  for (const pill of [dom.connectionPill, dom.streamPill, dom.thinkingPill]) {
+    const full = String(pill.dataset.full || pill.textContent || "");
+    const short = String(pill.dataset.short || full);
+    pill.textContent = state.isTopbarExpanded ? full : short;
+  }
 }
 
 function normalizeApprovalItem(rawItem) {
@@ -3698,6 +3939,14 @@ function normalizeTurnStatus(status) {
   }
 
   return "completed";
+}
+
+function draftThreadIdForBridge(bridgeId) {
+  return `${NEW_THREAD_DRAFT_PREFIX}${bridgeId}`;
+}
+
+function isDraftThreadId(threadId) {
+  return typeof threadId === "string" && threadId.startsWith(NEW_THREAD_DRAFT_PREFIX);
 }
 
 function threadIdShort(value) {
