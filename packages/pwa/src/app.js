@@ -2,9 +2,10 @@ const STORAGE_KEY = "vsc_codex_bridge_pwa_state_v2";
 const POLL_INTERVAL_MS = 1_000;
 const API_TIMEOUT_MS = 10_000;
 const OBSERVED_ACTIVE_TURN_TTL_MS = 90_000;
-const THINKING_GRACE_MS = 3_000;
+const THINKING_GRACE_MS = 0;
 const RECENT_COMPLETION_WINDOW_MS = 10_000;
-const BUILD_VERSION = "20260226-27";
+const SUMMARY_ACTIVE_TURN_TTL_MS = 30_000;
+const BUILD_VERSION = "20260226-30";
 const DEBUG_THINKING_LOGS = true;
 const MAX_EVENT_LINES = 400;
 const MOBILE_BREAKPOINT_PX = 900;
@@ -805,7 +806,7 @@ async function refreshThreadDetail(options = { showStatus: false }) {
     updateThinkingState(payload);
     updatePrimaryAction();
 
-    const activeTurn = findActiveTurn(payload) || findActiveTurnFromSelectedThreadSummary();
+    const activeTurn = findActiveTurn(payload) || findActiveTurnFromSelectedThreadSummary(payload);
     if (activeTurn) {
       if (state.selectedTurnId !== activeTurn.turnId) {
         state.selectedTurnId = activeTurn.turnId;
@@ -1601,44 +1602,26 @@ function updateConversationHeader(detail) {
  */
 function updateThinkingState(detail) {
   const now = Date.now();
-  const selectedActiveTurn = findActiveTurn(detail) || findActiveTurnFromSelectedThreadSummary();
-  const workspaceActiveTurn = selectedActiveTurn ? null : findAnyActiveTurnFromWorkspaceSummary();
-  const visibleThinkingTurn = selectedActiveTurn || workspaceActiveTurn;
-  const jumpThreadId =
-    workspaceActiveTurn && workspaceActiveTurn.threadId && workspaceActiveTurn.threadId !== state.selectedThreadId
-      ? workspaceActiveTurn.threadId
-      : null;
-  const hasGrace = !visibleThinkingTurn && now - state.lastThinkingSeenAt <= THINKING_GRACE_MS;
+  const selectedSummaryActiveTurn = detail ? null : findActiveTurnFromSelectedThreadSummary(null);
+  const selectedActiveTurn = findActiveTurn(detail) || selectedSummaryActiveTurn;
+  const visibleThinkingTurn = selectedActiveTurn;
+  const jumpThreadId = null;
 
   if (visibleThinkingTurn) {
     state.lastThinkingSeenAt = now;
 
-    if (selectedActiveTurn) {
-      state.isThinking = true;
-      state.activeTurnStatus = selectedActiveTurn.status;
-      state.selectedTurnId = selectedActiveTurn.turnId;
-    } else {
-      // Keep composer in send mode when another thread is active.
-      state.isThinking = false;
-      state.activeTurnStatus = null;
-    }
+    state.isThinking = true;
+    state.activeTurnStatus = selectedActiveTurn.status;
+    state.selectedTurnId = selectedActiveTurn.turnId;
 
     dom.thinkingIndicator.hidden = false;
-    setThinkingIndicatorText(workspaceActiveTurn ? "Codex is thinking in another thread" : "Codex is thinking");
+    setThinkingIndicatorText("Codex is thinking");
     dom.thinkingPill.dataset.tone = "warn";
     setPillText(
       dom.thinkingPill,
       visibleThinkingTurn.status === "waiting_approval" ? "Waiting approval" : "Thinking",
       visibleThinkingTurn.status === "waiting_approval" ? "WAIT" : "THINK",
     );
-  } else if (hasGrace) {
-    // Briefly keep indicator visible so short turns are not visually missed.
-    state.isThinking = false;
-    state.activeTurnStatus = null;
-    dom.thinkingIndicator.hidden = false;
-    setThinkingIndicatorText("Codex is thinking");
-    dom.thinkingPill.dataset.tone = "warn";
-    setPillText(dom.thinkingPill, "Thinking", "THINK");
   } else {
     state.isThinking = false;
     state.activeTurnStatus = null;
@@ -1661,11 +1644,11 @@ function updateThinkingState(detail) {
 
   const debugKey = [
     selectedActiveTurn ? "selected" : "none",
-    workspaceActiveTurn ? "workspace" : "none",
-    hasGrace ? "grace" : "nograce",
+    "workspace:none",
+    "nograce",
     dom.thinkingIndicator.hidden ? "hidden" : "visible",
     selectedActiveTurn?.turnId || "-",
-    workspaceActiveTurn?.turnId || "-",
+    "-",
     state.selectedThreadId || "-",
     state.selectedBridgeId || "-",
   ].join("|");
@@ -1674,8 +1657,8 @@ function updateThinkingState(detail) {
     state.lastThinkingDebugKey = debugKey;
     debugThinkingLog("updateThinkingState", {
       selectedActiveTurn,
-      workspaceActiveTurn,
-      hasGrace,
+      workspaceActiveTurn: null,
+      hasGrace: false,
       indicatorHidden: dom.thinkingIndicator.hidden,
       pill: dom.thinkingPill.textContent,
       selectedThreadId: state.selectedThreadId,
@@ -1701,7 +1684,7 @@ function captureRecentThreadActivity(detail) {
 
   state.lastSelectedThreadUpdatedAt = updatedAt;
 
-  const activeTurn = findActiveTurn(detail) || findActiveTurnFromSelectedThreadSummary();
+  const activeTurn = findActiveTurn(detail) || findActiveTurnFromSelectedThreadSummary(detail);
   if (activeTurn) {
     state.lastThinkingSeenAt = Date.now();
     debugThinkingLog("captureRecentThreadActivity:active", {
@@ -1962,7 +1945,9 @@ async function handlePrimaryAction() {
     return;
   }
 
-  if (state.isThinking) {
+  // Dispatch by rendered button mode to avoid UI/state race conditions.
+  const mode = asString(dom.primaryAction.dataset.mode) || (state.isThinking ? "steer" : "send");
+  if (mode === "steer") {
     await sendSteerFromComposer();
   } else {
     await sendMessage();
@@ -2083,7 +2068,13 @@ async function sendMessage() {
  * Sends a steer instruction using the main composer text area.
  */
 async function sendSteerFromComposer() {
-  if (!state.selectedBridgeId || !state.selectedTurnId) {
+  const turnId =
+    state.selectedTurnId ||
+    findActiveTurn(state.threadDetail)?.turnId ||
+    findActiveTurnFromSelectedThreadSummary(state.threadDetail)?.turnId ||
+    null;
+
+  if (!state.selectedBridgeId || !turnId) {
     setStatus("No active turn to steer.", true);
     return;
   }
@@ -2096,7 +2087,7 @@ async function sendSteerFromComposer() {
 
   try {
     await apiRequest(
-      `/api/v1/bridges/${encodeURIComponent(state.selectedBridgeId)}/turns/${encodeURIComponent(state.selectedTurnId)}/steer`,
+      `/api/v1/bridges/${encodeURIComponent(state.selectedBridgeId)}/turns/${encodeURIComponent(turnId)}/steer`,
       {
         method: "POST",
         body: JSON.stringify({ text }),
@@ -2104,7 +2095,21 @@ async function sendSteerFromComposer() {
     );
 
     dom.prompt.value = "";
-    setStatus(`Steer sent to ${threadIdShort(state.selectedTurnId)}.`);
+    state.selectedTurnId = turnId;
+    setStatus(`Steer sent to ${threadIdShort(turnId)}.`);
+    appendEventLog(`[steer] sent turn=${turnId} text=${JSON.stringify(text)}`);
+
+    // Provide immediate visible feedback in chat even if backend snapshots lag.
+    if (state.threadDetail && Array.isArray(state.threadDetail.messages)) {
+      state.threadDetail.messages.push({
+        role: "user",
+        text,
+        ts: new Date().toISOString(),
+        turnId,
+        kind: "steer",
+      });
+      renderMessages(state.threadDetail, { force: true });
+    }
 
     await refreshThreadDetail();
   } catch (error) {
@@ -2359,7 +2364,7 @@ function shouldMaintainStreamForTurn(turnId) {
     return false;
   }
 
-  const activeTurn = findActiveTurn(state.threadDetail) || findActiveTurnFromSelectedThreadSummary();
+  const activeTurn = findActiveTurn(state.threadDetail) || findActiveTurnFromSelectedThreadSummary(state.threadDetail);
   if (activeTurn && activeTurn.turnId === turnId) {
     return true;
   }
@@ -3453,27 +3458,64 @@ function findActiveTurn(detail) {
   return runningTurns[0];
 }
 
-function findActiveTurnFromSelectedThreadSummary() {
+function normalizeRunningSummaryActiveTurn(item) {
+  const threadId = asString(item?.threadId);
+  const turnId = asString(item?.activeTurnId);
+  const status = asString(item?.status);
+  const updatedAtTs = safeTs(asString(item?.updatedAt));
+  if (!threadId || !turnId || !isRunningThreadStatus(status) || updatedAtTs <= 0) {
+    return null;
+  }
+
+  if (Date.now() - updatedAtTs > SUMMARY_ACTIVE_TURN_TTL_MS) {
+    return null;
+  }
+
+  return {
+    threadId,
+    turnId,
+    status: status === "waiting_approval" ? "waiting_approval" : "running",
+    updatedAtTs,
+  };
+}
+
+function findActiveTurnFromSelectedThreadSummary(detail = null) {
   if (!state.selectedBridgeId || !state.selectedThreadId) {
     return null;
   }
 
   const threadItems = state.threadByBridge.get(state.selectedBridgeId) || [];
   const summary = threadItems.find((item) => item.threadId === state.selectedThreadId);
-  if (!summary) {
+  const summaryActiveTurn = normalizeRunningSummaryActiveTurn(summary);
+  if (!summaryActiveTurn) {
     return null;
   }
 
-  const activeTurnId = asString(summary.activeTurnId);
-  const status = asString(summary.status);
+  const detailThreadId = asString(detail?.thread?.threadId);
+  if (detailThreadId && detailThreadId === state.selectedThreadId) {
+    const turns = Array.isArray(detail?.turns) ? detail.turns : [];
+    const detailThreadStatus = asString(detail?.thread?.status);
+    const detailActiveTurnId = asString(detail?.thread?.activeTurnId);
+    const detailHasRunningTurn = turns.some((turn) => isRunningTurnStatus(asString(turn?.status)));
+    const detailHasRunningState = Boolean(detailActiveTurnId && isRunningThreadStatus(detailThreadStatus));
 
-  if (!activeTurnId || !isRunningThreadStatus(status)) {
-    return null;
+    if (!detailHasRunningTurn && !detailHasRunningState) {
+      const detailUpdatedAtTs = safeTs(asString(detail?.thread?.updatedAt));
+      if (detailUpdatedAtTs <= 0 || detailUpdatedAtTs >= summaryActiveTurn.updatedAtTs) {
+        debugThinkingLog("findActiveTurnFromSelectedThreadSummary:ignored", {
+          reason: "detail-idle-and-as-fresh-or-fresher",
+          selectedThreadId: state.selectedThreadId,
+          detailUpdatedAtTs,
+          summaryUpdatedAtTs: summaryActiveTurn.updatedAtTs,
+        });
+        return null;
+      }
+    }
   }
 
   return {
-    turnId: activeTurnId,
-    status: status === "waiting_approval" ? "waiting_approval" : "running",
+    turnId: summaryActiveTurn.turnId,
+    status: summaryActiveTurn.status,
   };
 }
 
@@ -3483,29 +3525,22 @@ function findAnyActiveTurnFromWorkspaceSummary() {
   }
 
   const threadItems = state.threadByBridge.get(state.selectedBridgeId) || [];
-  const activeItems = threadItems.filter((item) => {
-    const activeTurnId = asString(item.activeTurnId);
-    const status = asString(item.status);
-    return Boolean(activeTurnId && isRunningThreadStatus(status));
-  });
+  const activeItems = threadItems
+    .filter((item) => asString(item?.threadId) !== state.selectedThreadId)
+    .map((item) => normalizeRunningSummaryActiveTurn(item))
+    .filter((item) => item !== null);
 
   if (activeItems.length === 0) {
     return null;
   }
 
-  activeItems.sort((left, right) => safeTs(right?.updatedAt) - safeTs(left?.updatedAt));
+  activeItems.sort((left, right) => right.updatedAtTs - left.updatedAtTs);
   const chosen = activeItems[0];
-  const turnId = asString(chosen.activeTurnId);
-  const status = asString(chosen.status);
-
-  if (!turnId || !isRunningThreadStatus(status)) {
-    return null;
-  }
 
   return {
     threadId: chosen.threadId,
-    turnId,
-    status: status === "waiting_approval" ? "waiting_approval" : "running",
+    turnId: chosen.turnId,
+    status: chosen.status,
   };
 }
 

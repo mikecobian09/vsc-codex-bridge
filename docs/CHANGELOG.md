@@ -17,6 +17,8 @@ This project follows a practical Keep-a-Changelog style.
 - Release docs simplified to VSIX-first publishing.
 - Root scripts cleaned to remove deprecated desktop workflow commands from the primary workflow.
 - New-conversation draft flow now retries with explicit `turn/start` thread targeting when `thread/start` is unavailable or reports `busy`, fixing `409 Conflict` cases when sending first message from PWA.
+- Bridge thread summary mapping now discards phantom `activeTurnId` hints that are not confirmed by active raw/tracked turn state, reducing stuck `thinking` states in PWA.
+- PWA primary action dispatch now follows rendered button mode (`send`/`steer`) and steer sends immediate visible timeline feedback, fixing cases where steer appeared to do nothing.
 
 ## [0.1.0] - 2026-02-25
 

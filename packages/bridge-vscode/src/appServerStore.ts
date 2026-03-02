@@ -1032,8 +1032,11 @@ export class AppServerStore implements BridgeStoreLike {
     if (!activeTurnId && activeFromThread) {
       const hintedRawTurn = findRawTurnById(rawTurns, activeFromThread);
       const hintedRawStatus = asString(asObject(hintedRawTurn).status);
+      const hintedTrackedStatus = this.turnRecords.get(activeFromThread)?.status;
 
-      if (!hintedRawTurn || isActiveRawTurnStatus(hintedRawStatus)) {
+      // Accept hinted active turn only when we can corroborate it either from the
+      // latest raw snapshot or from a still-running tracked turn record.
+      if (isActiveRawTurnStatus(hintedRawStatus) || isActiveTurnStatus(hintedTrackedStatus)) {
         activeTurnId = activeFromThread;
       }
     }
@@ -1066,7 +1069,15 @@ export class AppServerStore implements BridgeStoreLike {
         status = trackedStatus;
       } else {
         const rawActiveTurn = findRawTurnById(rawTurns, activeTurnId);
-        status = mapAppTurnStatus(asString(asObject(rawActiveTurn).status), "running");
+        const rawActiveStatus = asString(asObject(rawActiveTurn).status);
+        if (isActiveRawTurnStatus(rawActiveStatus)) {
+          status = mapAppTurnStatus(rawActiveStatus, "running");
+        } else {
+          // Defensive cleanup: avoid exposing phantom active turns that no longer
+          // exist in snapshots and are not tracked as running locally.
+          activeTurnId = null;
+          this.activeTurnByThread.delete(threadId);
+        }
       }
     }
 

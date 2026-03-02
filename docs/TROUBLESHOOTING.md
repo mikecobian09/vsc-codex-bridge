@@ -38,6 +38,19 @@ Fixes:
 - Hard refresh browser.
 - Re-open thread from drawer.
 - Restart bridge if active-turn state looks stale.
+- Ensure you are running a recent build (`?v=20260226-30` or newer) with stricter active-turn reconciliation.
+
+## 3.1) `Steer` button appears to do nothing
+
+Checks:
+1. Confirm the main action button currently shows `Steer`.
+2. Confirm there is an active turn in the selected thread.
+3. Open the activity/event panel and verify a `[steer] sent ...` line appears.
+
+Fixes:
+- Update to latest VSIX and hard refresh PWA.
+- Re-open the active thread from drawer and retry.
+- If the thread was stale, interrupt and start a new turn before steering again.
 
 ## 4) Message from PWA creates another thread or fails with thread errors
 

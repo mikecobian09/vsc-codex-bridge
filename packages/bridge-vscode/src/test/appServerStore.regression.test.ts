@@ -285,6 +285,36 @@ test("notification mapper marks turn completed and clears active turn pointer on
   assert.equal(getActiveTurnMap(store).has(turn.threadId), false);
 });
 
+test("listThreads ignores phantom hinted active turn when snapshot cannot confirm it", async () => {
+  const nowUnix = Math.floor(Date.now() / 1000);
+  mockAppServer.request = async (method: string, params?: unknown): Promise<any> => {
+    mockAppServer.requestCalls.push({ method, params });
+    if (method === "thread/list") {
+      return {
+        data: [
+          {
+            id: "thread_phantom",
+            preview: "Phantom thread",
+            createdAt: nowUnix,
+            updatedAt: nowUnix,
+            currentTurnId: "turn_missing",
+            turns: [],
+          },
+        ],
+      };
+    }
+
+    throw new Error(`Unexpected RPC call: ${method}`);
+  };
+
+  const items = await store.listThreads();
+  assert.equal(items.length, 1);
+  assert.equal(items[0].threadId, "thread_phantom");
+  assert.equal(items[0].activeTurnId, null);
+  assert.equal(items[0].status, "idle");
+  assert.equal(getActiveTurnMap(store).has("thread_phantom"), false);
+});
+
 test("startTurn with draft thread id creates a brand new conversation thread", async () => {
   mockAppServer.request = async (method: string, params?: unknown): Promise<any> => {
     mockAppServer.requestCalls.push({ method, params });

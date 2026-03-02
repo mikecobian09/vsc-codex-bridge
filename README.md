@@ -25,6 +25,9 @@ Extension-first bridge to control Codex from your phone while working on the sam
 
 That is it. Single-extension install only.
 
+Quick cache-bust tip after updates:
+- Open `http://<YOUR-MAC-IP>:7777/?v=20260226-30` and do one hard refresh.
+
 ### Install from repository artifact
 1. Download [`releases/vsc-codex-bridge-latest.vsix`](./releases/vsc-codex-bridge-latest.vsix).
 2. In VS Code run `Extensions: Install from VSIX...`.
